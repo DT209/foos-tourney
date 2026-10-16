@@ -56,7 +56,9 @@ describe('bracket match edits', () => {
 describe('confirmBracketMatch', () => {
   it('errors when the match has no winner', () => {
     const b = L.generateBracketStructure(teams(4), 'single', 3);
-    assert.deepEqual(L.confirmBracketMatch(b, 'winners', 0, 0), { error: 'Cannot complete match: No team has won enough games.' });
+    assert.deepEqual(L.confirmBracketMatch(b, 'winners', 0, 0), {
+      error: 'Cannot complete match: No team has won enough games.'
+    });
   });
 
   it('single elimination, 4 teams: semis feed final and 3rd place, finishes once', () => {
@@ -66,7 +68,12 @@ describe('confirmBracketMatch', () => {
     assert.deepEqual([bracket.grandFinals[0].team1.name, bracket.grandFinals[0].team2.name], ['T1', 'T2']);
     assert.deepEqual([bracket.thirdPlaceMatch.team1.name, bracket.thirdPlaceMatch.team2.name], ['T4', 'T3']);
     assert.equal(bracket.thirdPlaceMatch.hasPropagatedT1 && bracket.thirdPlaceMatch.hasPropagatedT2, true);
-    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [[1, 'T1'], [2, 'T2'], [3, 'T4'], [4, 'T3']]);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2'],
+      [3, 'T4'],
+      [4, 'T3']
+    ]);
   });
 
   it('single elimination, 8 teams: team2 winners advance into team2 slots', () => {
@@ -118,7 +125,12 @@ describe('confirmBracketMatch', () => {
     b.thirdPlaceMatch = null;
     const { bracket, finishedCount } = playOut(b);
     assert.equal(finishedCount, 1);
-    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [[1, 'T1'], [2, 'T2'], [3, 'T4'], [3, 'T3']]);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2'],
+      [3, 'T4'],
+      [3, 'T3']
+    ]);
   });
 
   it('double elimination, 4 teams, no reset: winners champion takes it', () => {
@@ -128,16 +140,27 @@ describe('confirmBracketMatch', () => {
     // Drop-ins: R1 losers fill L1; the R2 loser is mirrored into L2.
     assert.deepEqual([bracket.losersRounds[0][0].team1.name, bracket.losersRounds[0][0].team2.name], ['T4', 'T3']);
     assert.deepEqual([bracket.losersRounds[1][0].team1.name, bracket.losersRounds[1][0].team2.name], ['T2', 'T4']);
-    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [[1, 'T1'], [2, 'T2'], [3, 'T4']]);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2'],
+      [3, 'T4']
+    ]);
   });
 
   it('double elimination: losers champion winning the Grand Final forces a reset match', () => {
-    let { bracket } = playOut(L.generateBracketStructure(teams(4), 'double', 3), m => (m.bracketType === 'grandFinal' && m.round === 1 ? 2 : 1));
+    const { bracket } = playOut(L.generateBracketStructure(teams(4), 'double', 3), m =>
+      m.bracketType === 'grandFinal' && m.round === 1 ? 2 : 1
+    );
     assert.equal(bracket.grandFinals.length, 2);
     const reset = bracket.grandFinals[1];
     assert.deepEqual(
       { id: reset.id, num: reset.num, label: reset.label, status: reset.status },
-      { id: 'm-grandFinal-2-0', num: bracket.grandFinals[0].num + 1, label: 'Grand Finals Bracket Reset (Match 2)', status: 'DONE' }
+      {
+        id: 'm-grandFinal-2-0',
+        num: bracket.grandFinals[0].num + 1,
+        label: 'Grand Finals Bracket Reset (Match 2)',
+        status: 'DONE'
+      }
     );
     assert.equal(bracket.isCompleted, true);
     assert.equal(L.calculateBracketStandings(bracket)[0].team.name, 'T1');
@@ -185,7 +208,11 @@ describe('confirmBracketMatch', () => {
   it('championship, 4 teams: final decides 1st/2nd, losers final decides 3rd', () => {
     const { bracket, finishedCount } = playOut(L.generateBracketStructure(teams(4), 'championship', 1));
     assert.equal(finishedCount, 1);
-    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [[1, 'T1'], [2, 'T2'], [3, 'T4']]);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2'],
+      [3, 'T4']
+    ]);
     // The final's loser never drops down.
     assert.ok(bracket.losersRounds.flat().every(m => m.team1.name !== 'T2' && m.team2.name !== 'T2'));
   });
@@ -199,7 +226,10 @@ describe('confirmBracketMatch', () => {
   it('championship, 2 teams: one match finishes it', () => {
     const { bracket, finishedCount } = playOut(L.generateBracketStructure(teams(2), 'championship', 1));
     assert.equal(finishedCount, 1);
-    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [[1, 'T1'], [2, 'T2']]);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2']
+    ]);
   });
 
   it('drop-ins to a missing losers round or slot are skipped', () => {
@@ -246,14 +276,37 @@ describe('isBracketFinished', () => {
   it('championship: needs the winners final and the losers final', () => {
     assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: [], losersRounds: null }), false);
     assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: null }), false);
-    assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [[]] }), false);
-    assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [[{ status: 'READY' }]] }), false);
-    assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [[{ status: 'DONE' }]] }), true);
-    assert.equal(L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [] }), true);
+    assert.equal(
+      L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [[]] }),
+      false
+    );
+    assert.equal(
+      L.isBracketFinished({
+        type: 'championship',
+        winnersRounds: [[{ status: 'DONE' }]],
+        losersRounds: [[{ status: 'READY' }]]
+      }),
+      false
+    );
+    assert.equal(
+      L.isBracketFinished({
+        type: 'championship',
+        winnersRounds: [[{ status: 'DONE' }]],
+        losersRounds: [[{ status: 'DONE' }]]
+      }),
+      true
+    );
+    assert.equal(
+      L.isBracketFinished({ type: 'championship', winnersRounds: [[{ status: 'DONE' }]], losersRounds: [] }),
+      true
+    );
   });
 
   it('double: needs the last Grand Final', () => {
-    assert.equal(L.isBracketFinished({ type: 'double', grandFinals: [{ status: 'DONE' }, { status: 'READY' }] }), false);
+    assert.equal(
+      L.isBracketFinished({ type: 'double', grandFinals: [{ status: 'DONE' }, { status: 'READY' }] }),
+      false
+    );
     assert.equal(L.isBracketFinished({ type: 'double', grandFinals: [{ status: 'DONE' }] }), true);
     assert.equal(L.isBracketFinished({ type: 'double', grandFinals: [] }), false);
   });
@@ -276,42 +329,165 @@ describe('calculateBracketStandings', () => {
   });
 
   it('single: skips empty slots and falls back to semi-final losers', () => {
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'single', grandFinals: [m(A, null, 1)], thirdPlaceMatch: m(null, C, 2), winnersRounds: []
-    })), [[1, 'T1'], [3, 'T3']]);
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'single', grandFinals: [m(A, B, 2)], thirdPlaceMatch: m(C, D, 1)
-    })), [[1, 'T2'], [2, 'T1'], [3, 'T3'], [4, 'T4']]);
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'single', grandFinals: [m(A, B, 1)], thirdPlaceMatch: m(C, D, null),
-      winnersRounds: [[m(A, D, 1), m(C, B, 2), m(null, null, null), m(null, A, 2)]]
-    })), [[1, 'T1'], [2, 'T2'], [3, 'T4'], [3, 'T3']]);
-    assert.deepEqual(names(L.calculateBracketStandings({ type: 'single', grandFinals: [m(A, B, 1)], thirdPlaceMatch: null, winnersRounds: null })), [[1, 'T1'], [2, 'T2']]);
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'single',
+          grandFinals: [m(A, null, 1)],
+          thirdPlaceMatch: m(null, C, 2),
+          winnersRounds: []
+        })
+      ),
+      [
+        [1, 'T1'],
+        [3, 'T3']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'single',
+          grandFinals: [m(A, B, 2)],
+          thirdPlaceMatch: m(C, D, 1)
+        })
+      ),
+      [
+        [1, 'T2'],
+        [2, 'T1'],
+        [3, 'T3'],
+        [4, 'T4']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'single',
+          grandFinals: [m(A, B, 1)],
+          thirdPlaceMatch: m(C, D, null),
+          winnersRounds: [[m(A, D, 1), m(C, B, 2), m(null, null, null), m(null, A, 2)]]
+        })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2'],
+        [3, 'T4'],
+        [3, 'T3']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'single',
+          grandFinals: [m(A, B, 1)],
+          thirdPlaceMatch: null,
+          winnersRounds: null
+        })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
   });
 
   it('championship: tolerates missing rounds', () => {
-    assert.deepEqual(L.calculateBracketStandings({ type: 'championship', winnersRounds: null, losersRounds: null }), []);
+    assert.deepEqual(
+      L.calculateBracketStandings({ type: 'championship', winnersRounds: null, losersRounds: null }),
+      []
+    );
     assert.deepEqual(L.calculateBracketStandings({ type: 'championship', winnersRounds: [], losersRounds: [] }), []);
-    assert.deepEqual(L.calculateBracketStandings({ type: 'championship', winnersRounds: [[m(A, B, null)]], losersRounds: [[]] }), []);
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'championship', winnersRounds: [[m(A, B, 2)]], losersRounds: [[m(C, D, 2)]]
-    })), [[1, 'T2'], [2, 'T1'], [3, 'T4']]);
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'championship', winnersRounds: [[m(A, B, 1)]], losersRounds: [[m(C, null, 2)]]
-    })), [[1, 'T1'], [2, 'T2']]);
+    assert.deepEqual(
+      L.calculateBracketStandings({ type: 'championship', winnersRounds: [[m(A, B, null)]], losersRounds: [[]] }),
+      []
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'championship',
+          winnersRounds: [[m(A, B, 2)]],
+          losersRounds: [[m(C, D, 2)]]
+        })
+      ),
+      [
+        [1, 'T2'],
+        [2, 'T1'],
+        [3, 'T4']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'championship',
+          winnersRounds: [[m(A, B, 1)]],
+          losersRounds: [[m(C, null, 2)]]
+        })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
   });
 
   it('double: 3rd is the losers final loser; missing data is skipped', () => {
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[m(B, C, 2)]]
-    })), [[1, 'T1'], [2, 'T2'], [3, 'T2']]);
-    assert.deepEqual(names(L.calculateBracketStandings({
-      type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[m(B, C, 1)]]
-    })), [[1, 'T1'], [2, 'T2'], [3, 'T3']]);
-    assert.deepEqual(names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: null })), [[1, 'T1'], [2, 'T2']]);
-    assert.deepEqual(names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [] })), [[1, 'T1'], [2, 'T2']]);
-    assert.deepEqual(names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[]] })), [[1, 'T1'], [2, 'T2']]);
-    assert.deepEqual(names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[m(B, C, null)]] })), [[1, 'T1'], [2, 'T2']]);
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'double',
+          grandFinals: [m(A, B, 1)],
+          losersRounds: [[m(B, C, 2)]]
+        })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2'],
+        [3, 'T2']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({
+          type: 'double',
+          grandFinals: [m(A, B, 1)],
+          losersRounds: [[m(B, C, 1)]]
+        })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2'],
+        [3, 'T3']
+      ]
+    );
+    assert.deepEqual(
+      names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: null })),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
+    assert.deepEqual(
+      names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [] })),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
+    assert.deepEqual(
+      names(L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[]] })),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
+    assert.deepEqual(
+      names(
+        L.calculateBracketStandings({ type: 'double', grandFinals: [m(A, B, 1)], losersRounds: [[m(B, C, null)]] })
+      ),
+      [
+        [1, 'T1'],
+        [2, 'T2']
+      ]
+    );
   });
 });
 
@@ -331,7 +507,13 @@ describe('assignBracketTables', () => {
     const b = L.generateBracketStructure(teams(8), 'single', 1);
     b.winnersRounds[0][2].table = 1;
     const tables = L.assignBracketTables(b, 2);
-    assert.deepEqual(tables.map(t => [t.section, t.rIdx, t.mIdx]), [['winners', 0, 2], ['winners', 0, 0]]);
+    assert.deepEqual(
+      tables.map(t => [t.section, t.rIdx, t.mIdx]),
+      [
+        ['winners', 0, 2],
+        ['winners', 0, 0]
+      ]
+    );
     assert.equal(b.winnersRounds[0][1].table, null);
   });
 
@@ -341,7 +523,10 @@ describe('assignBracketTables', () => {
     b.thirdPlaceMatch.team1 = BYE;
     b.thirdPlaceMatch.team2 = teams(3)[2];
     const tables = L.assignBracketTables(b, 3);
-    assert.deepEqual(tables.map(t => t && t.section), ['winners', 'grandFinals', null]);
+    assert.deepEqual(
+      tables.map(t => t && t.section),
+      ['winners', 'grandFinals', null]
+    );
   });
 
   it('ignores tables beyond the current count and done matches holding tables', () => {

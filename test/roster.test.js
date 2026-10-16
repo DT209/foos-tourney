@@ -7,8 +7,15 @@ const lb = [{ name: 'Ann', singlesElo: null, doublesElo: 1000 }, { name: 'Annabe
 describe('createPlayer / addPlayer', () => {
   it('creates an active, unpaid player with zeroed stats', () => {
     assert.deepEqual(L.createPlayer(7, 'Ann'), {
-      id: 7, name: 'Ann', paid: false, active: true,
-      wins: 0, losses: 0, gf: 0, ga: 0, eligibleDrawsMissed: 0
+      id: 7,
+      name: 'Ann',
+      paid: false,
+      active: true,
+      wins: 0,
+      losses: 0,
+      gf: 0,
+      ga: 0,
+      eligibleDrawsMissed: 0
     });
   });
 
@@ -16,7 +23,10 @@ describe('createPlayer / addPlayer', () => {
     const before = [player(1)];
     const after = L.addPlayer(before, 2, 'Bo');
     assert.equal(before.length, 1);
-    assert.deepEqual(after.map(p => p.name), ['P1', 'Bo']);
+    assert.deepEqual(
+      after.map(p => p.name),
+      ['P1', 'Bo']
+    );
   });
 });
 
@@ -26,10 +36,9 @@ describe('checkNewPlayerName', () => {
   });
 
   it('rejects case-insensitive duplicates', () => {
-    assert.deepEqual(
-      L.checkNewPlayerName('ann', [player(1, ' Ann ')], lb),
-      { error: 'A player named "ann" already exists in the roster.' }
-    );
+    assert.deepEqual(L.checkNewPlayerName('ann', [player(1, ' Ann ')], lb), {
+      error: 'A player named "ann" already exists in the roster.'
+    });
   });
 
   it('flags whether the name is an exact leaderboard match', () => {
@@ -45,7 +54,14 @@ describe('checkNewPlayerName', () => {
 describe('addPlayersByName', () => {
   it('skips names already on the roster and assigns sequential ids', () => {
     const result = L.addPlayersByName([player(1, 'Ann')], ['ann ', 'Bo', 'Cy'], 100);
-    assert.deepEqual(result.map(p => [p.id, p.name]), [[1, 'Ann'], [100, 'Bo'], [101, 'Cy']]);
+    assert.deepEqual(
+      result.map(p => [p.id, p.name]),
+      [
+        [1, 'Ann'],
+        [100, 'Bo'],
+        [101, 'Cy']
+      ]
+    );
   });
 });
 
@@ -66,7 +82,10 @@ describe('player edits', () => {
   });
 
   it('removes by id', () => {
-    assert.deepEqual(L.removePlayer(roster, 1).map(p => p.id), [2]);
+    assert.deepEqual(
+      L.removePlayer(roster, 1).map(p => p.id),
+      [2]
+    );
   });
 
   it('resets stats but keeps identity and flags', () => {
@@ -91,11 +110,11 @@ describe('computeStandings', () => {
       { ...player(4, 'Top'), wins: 2, losses: 0, gf: 10, ga: 0 }
     ];
     const s = L.computeStandings(roster);
-    assert.deepEqual(s.map(p => p.name), ['Top', 'HalfPlus', 'Half', 'Idle']);
     assert.deepEqual(
-      [s[1].totalGames, s[1].winPct, s[1].diff, s[1].avgDiff],
-      [2, '50.0', 4, '2.0']
+      s.map(p => p.name),
+      ['Top', 'HalfPlus', 'Half', 'Idle']
     );
+    assert.deepEqual([s[1].totalGames, s[1].winPct, s[1].diff, s[1].avgDiff], [2, '50.0', 4, '2.0']);
     assert.deepEqual([s[3].winPct, s[3].avgDiff, s[3].totalGames], ['0.0', '0.0', 0]);
   });
 });
@@ -108,12 +127,18 @@ describe('leaderboard picker', () => {
 
   it('sorts the leaderboard and marks roster members as already added', () => {
     const view = L.getLeaderboardPickerView([player(1, ' ANN ')], lb, ['bob']);
-    assert.deepEqual(view.rows.map(r => [r.player.name, r.alreadyAdded, r.checked]), [
-      ['Ann', true, true],
-      ['Annabel', false, false],
-      ['bob', false, true]
-    ]);
-    assert.deepEqual(view.available.map(p => p.name), ['Annabel', 'bob']);
+    assert.deepEqual(
+      view.rows.map(r => [r.player.name, r.alreadyAdded, r.checked]),
+      [
+        ['Ann', true, true],
+        ['Annabel', false, false],
+        ['bob', false, true]
+      ]
+    );
+    assert.deepEqual(
+      view.available.map(p => p.name),
+      ['Annabel', 'bob']
+    );
     assert.equal(view.allSelected, false);
     assert.deepEqual(L.toggleSelectAll(view), ['Annabel', 'bob']);
   });
@@ -136,8 +161,14 @@ describe('getPlayerSuggestions', () => {
   });
 
   it('matches case-insensitive substrings, capped at the limit', () => {
-    assert.deepEqual(L.getPlayerSuggestions(lb, ' AN ').map(p => p.name), ['Ann', 'Annabel']);
-    assert.deepEqual(L.getPlayerSuggestions(lb, 'an', 1).map(p => p.name), ['Ann']);
+    assert.deepEqual(
+      L.getPlayerSuggestions(lb, ' AN ').map(p => p.name),
+      ['Ann', 'Annabel']
+    );
+    assert.deepEqual(
+      L.getPlayerSuggestions(lb, 'an', 1).map(p => p.name),
+      ['Ann']
+    );
     const many = Array.from({ length: 10 }, (_, i) => ({ name: `X${i}` }));
     assert.equal(L.getPlayerSuggestions(many, 'x').length, 8);
   });

@@ -112,10 +112,10 @@ describe('fetchLeaderboardPlayers', () => {
       call = { url, opts };
       return { ok: true, text: async () => '<html>' };
     };
-    const result = await L.fetchLeaderboardPlayers(fetchImpl, fakeParse([
-      'console.log(1)',
-      'const playersData = [{ name: "Ann", singlesElo: 1, doublesElo: 2 }];'
-    ]));
+    const result = await L.fetchLeaderboardPlayers(
+      fetchImpl,
+      fakeParse(['console.log(1)', 'const playersData = [{ name: "Ann", singlesElo: 1, doublesElo: 2 }];'])
+    );
     assert.deepEqual(call, { url: L.LEADERBOARD_URL, opts: { cache: 'no-store' } });
     assert.deepEqual(result, [{ name: 'Ann', singlesElo: 1, doublesElo: 2 }]);
   });

@@ -9,7 +9,6 @@
 // injectable parameters so every function can be tested in isolation.
 
 globalThis.TournamentLogic = (() => {
-
   // ==========================================
   // SECURITY & SANITIZATION HELPERS
   // ==========================================
@@ -135,8 +134,9 @@ globalThis.TournamentLogic = (() => {
     const html = await res.text();
     const doc = parseHtml(html);
 
-    const dataScript = Array.from(doc.querySelectorAll('script:not([src])'))
-      .find(s => /const\s+playersData\s*=/.test(s.textContent));
+    const dataScript = Array.from(doc.querySelectorAll('script:not([src])')).find(s =>
+      /const\s+playersData\s*=/.test(s.textContent)
+    );
     if (!dataScript) throw new Error('Could not locate playersData on leaderboard page');
 
     const players = parsePlayersDataScript(dataScript.textContent);
@@ -196,14 +196,14 @@ globalThis.TournamentLogic = (() => {
   }
 
   function togglePlayerFlag(players, id, flag) {
-    return players.map(p => p.id === id ? { ...p, [flag]: !p[flag] } : p);
+    return players.map(p => (p.id === id ? { ...p, [flag]: !p[flag] } : p));
   }
 
   // An empty (post-sanitize) name leaves the roster unchanged.
   function renamePlayer(players, id, rawName) {
     const name = sanitizeInput(rawName, PLAYER_NAME_MAX_LENGTH);
     if (!name) return players;
-    return players.map(p => p.id === id ? { ...p, name } : p);
+    return players.map(p => (p.id === id ? { ...p, name } : p));
   }
 
   function removePlayer(players, id) {
@@ -224,13 +224,15 @@ globalThis.TournamentLogic = (() => {
 
   // Monster-stage standings: win % first, then average goal differential.
   function computeStandings(players) {
-    return players.map(p => {
-      const totalGames = p.wins + p.losses;
-      const winPct = totalGames > 0 ? ((p.wins / totalGames) * 100).toFixed(1) : "0.0";
-      const diff = p.gf - p.ga;
-      const avgDiff = totalGames > 0 ? (diff / totalGames).toFixed(1) : "0.0";
-      return { ...p, totalGames, winPct, diff, avgDiff };
-    }).sort((a, b) => parseFloat(b.winPct) - parseFloat(a.winPct) || parseFloat(b.avgDiff) - parseFloat(a.avgDiff));
+    return players
+      .map(p => {
+        const totalGames = p.wins + p.losses;
+        const winPct = totalGames > 0 ? ((p.wins / totalGames) * 100).toFixed(1) : '0.0';
+        const diff = p.gf - p.ga;
+        const avgDiff = totalGames > 0 ? (diff / totalGames).toFixed(1) : '0.0';
+        return { ...p, totalGames, winPct, diff, avgDiff };
+      })
+      .sort((a, b) => parseFloat(b.winPct) - parseFloat(a.winPct) || parseFloat(b.avgDiff) - parseFloat(a.avgDiff));
   }
 
   // --- Leaderboard picker & autocomplete ---
@@ -330,12 +332,14 @@ globalThis.TournamentLogic = (() => {
     }
 
     const busyPlayerIds = new Set();
-    matches.filter(m => m && m.status === 'LIVE').forEach(m => {
-      const activeMatchPlayers = [...(m.team1 || []), ...(m.team2 || [])];
-      activeMatchPlayers.forEach(p => {
-        if (p && p.id !== undefined) busyPlayerIds.add(p.id);
+    matches
+      .filter(m => m && m.status === 'LIVE')
+      .forEach(m => {
+        const activeMatchPlayers = [...(m.team1 || []), ...(m.team2 || [])];
+        activeMatchPlayers.forEach(p => {
+          if (p && p.id !== undefined) busyPlayerIds.add(p.id);
+        });
       });
-    });
 
     const availablePlayers = players.filter(p => {
       if (!p || p.id === undefined) return false;
@@ -448,7 +452,7 @@ globalThis.TournamentLogic = (() => {
   }
 
   function updateMatchById(matches, matchId, updater) {
-    return matches.map(m => m.id === matchId ? updater(m) : m);
+    return matches.map(m => (m.id === matchId ? updater(m) : m));
   }
 
   function updateMonsterGameScore(matches, matchId, gameIndex, teamKey, value) {
@@ -508,8 +512,8 @@ globalThis.TournamentLogic = (() => {
     let t1TotalGoals = 0;
     let t2TotalGoals = 0;
     match.games.forEach(g => {
-      t1TotalGoals += (parseInt(g.t1, 10) || 0);
-      t2TotalGoals += (parseInt(g.t2, 10) || 0);
+      t1TotalGoals += parseInt(g.t1, 10) || 0;
+      t2TotalGoals += parseInt(g.t2, 10) || 0;
     });
 
     const updatedPlayers = players.map(p => {
@@ -525,13 +529,13 @@ globalThis.TournamentLogic = (() => {
         wins: p.wins + (isUserWinner ? 1 : 0),
         losses: p.losses + (isUserWinner ? 0 : 1),
         gf: p.gf + (inTeam1 ? t1TotalGoals : t2TotalGoals),
-        ga: p.ga + (inTeam1 ? t2TotalGoals : t1TotalGoals),
+        ga: p.ga + (inTeam1 ? t2TotalGoals : t1TotalGoals)
       };
     });
 
     return {
       players: updatedPlayers,
-      matches: matches.map(m => m.id === matchId ? { ...m, status: 'DONE', winner } : m)
+      matches: matches.map(m => (m.id === matchId ? { ...m, status: 'DONE', winner } : m))
     };
   }
 
@@ -546,20 +550,29 @@ globalThis.TournamentLogic = (() => {
   // Standard tournament bracket seed positions generator
   function getStandardBracketSeedPositions(size) {
     if (size === 2) return [1, 2];
-    let rounds = Math.log2(size) - 1;
+    const rounds = Math.log2(size) - 1;
     let pls = [1, 2];
     for (let i = 0; i < rounds; i++) {
-      let nextPls = [];
+      const nextPls = [];
       for (let j = 0; j < pls.length; j++) {
         nextPls.push(pls[j]);
-        nextPls.push((pls.length * 2 + 1) - pls[j]);
+        nextPls.push(pls.length * 2 + 1 - pls[j]);
       }
       pls = nextPls;
     }
     return pls;
   }
 
-  function buildBracketTeams(rankedPlayers, teamCount, format, teamFormationStrategy, seedingStrategy, customTeams = [], leaderboardPlayers = [], random = Math.random) {
+  function buildBracketTeams(
+    rankedPlayers,
+    teamCount,
+    format,
+    teamFormationStrategy,
+    seedingStrategy,
+    customTeams = [],
+    leaderboardPlayers = [],
+    random = Math.random
+  ) {
     const requiredPlayers = format === '2v2' ? teamCount * 2 : teamCount;
     // "Top X" selection always comes from Monster stage performance, regardless
     // of seeding strategy - only the seed ORDER within that group changes below.
@@ -568,10 +581,10 @@ globalThis.TournamentLogic = (() => {
 
     // Guests / players not on the club leaderboard, or unranked in this format,
     // default to 1000 ELO.
-    const getPlayerElo = (p) => {
+    const getPlayerElo = p => {
       const lb = findLeaderboardPlayer(leaderboardPlayers, p.name);
       const elo = lb ? (format === '1v1' ? lb.singlesElo : lb.doublesElo) : null;
-      return (elo === null || elo === undefined) ? 1000 : elo;
+      return elo === null || elo === undefined ? 1000 : elo;
     };
 
     const N = qualified.length;
@@ -588,7 +601,7 @@ globalThis.TournamentLogic = (() => {
     });
 
     if (format === '1v1') {
-      let teams1v1 = qualified.map((p, idx) => ({
+      const teams1v1 = qualified.map((p, idx) => ({
         id: `team-${idx + 1}`,
         name: p.name,
         players: [p],
@@ -628,19 +641,20 @@ globalThis.TournamentLogic = (() => {
       }
     }
 
-    let formedTeams = pairs.map((pair) => {
+    const formedTeams = pairs.map(pair => {
       const p1 = pair[0];
       const p2 = pair[1];
-      const seed1 = p1 ? (playerSeedMap.get(p1.id) || 0) : 0;
-      const seed2 = p2 ? (playerSeedMap.get(p2.id) || 0) : 0;
+      const seed1 = p1 ? playerSeedMap.get(p1.id) || 0 : 0;
+      const seed2 = p2 ? playerSeedMap.get(p2.id) || 0 : 0;
 
       // Team ELO = 60% the higher player's ELO + 40% the lower player's ELO.
-      const teamSeedValue = (seedingStrategy === 'elo' && p1 && p2)
-        ? (0.6 * Math.max(seed1, seed2)) + (0.4 * Math.min(seed1, seed2))
-        : seed1 + seed2;
+      const teamSeedValue =
+        seedingStrategy === 'elo' && p1 && p2
+          ? 0.6 * Math.max(seed1, seed2) + 0.4 * Math.min(seed1, seed2)
+          : seed1 + seed2;
 
       return {
-        name: pair[1] ? `${pair[0].name} & ${pair[1].name}` : (pair[0] ? pair[0].name : 'TBD Team'),
+        name: pair[1] ? `${pair[0].name} & ${pair[1].name}` : pair[0] ? pair[0].name : 'TBD Team',
         players: pair,
         seedValue: teamSeedValue
       };
@@ -688,7 +702,7 @@ globalThis.TournamentLogic = (() => {
   // string ('' clears the slot because no candidate has id 0).
   function setManualTeamPlayer(customTeams, teamIndex, slot, candidates, playerId) {
     const player = candidates.find(p => p.id === Number(playerId));
-    return customTeams.map((team, idx) => idx === teamIndex ? { ...team, [slot]: player } : team);
+    return customTeams.map((team, idx) => (idx === teamIndex ? { ...team, [slot]: player } : team));
   }
 
   // The team-count input accepts free text; returns the number to rebuild
@@ -768,11 +782,9 @@ globalThis.TournamentLogic = (() => {
 
     const seedPositions = getStandardBracketSeedPositions(bracketSize);
 
-    const seededSlots = seedPositions.map((seedNum, slotIdx) => (
-      seedNum <= teams.length
-        ? teams[seedNum - 1]
-        : { id: `bye-${slotIdx}`, name: 'BYE', isBye: true }
-    ));
+    const seededSlots = seedPositions.map((seedNum, slotIdx) =>
+      seedNum <= teams.length ? teams[seedNum - 1] : { id: `bye-${slotIdx}`, name: 'BYE', isBye: true }
+    );
 
     let matchIdCounter = 1;
     const createMatchSlot = (round, position, bracketType, label) => ({
@@ -813,9 +825,7 @@ globalThis.TournamentLogic = (() => {
     let thirdPlaceMatch = null;
 
     if (elimType === 'single') {
-      grandFinals = [
-        createMatchSlot(numRounds, 0, 'grandFinal', 'Grand Finals')
-      ];
+      grandFinals = [createMatchSlot(numRounds, 0, 'grandFinal', 'Grand Finals')];
       if (numRounds >= 2) {
         thirdPlaceMatch = createMatchSlot(numRounds, 1, 'thirdPlace', '3rd / 4th Place Match');
       }
@@ -824,9 +834,7 @@ globalThis.TournamentLogic = (() => {
       // Championship Format's Losers Bracket has one fewer round than Double Elimination's:
       // the Winners Bracket runner-up never drops down to face the Losers Bracket champion,
       // so the Losers Bracket's own final round IS the 3rd Place Match.
-      const numLoserRounds = elimType === 'championship'
-        ? Math.max(0, (numRounds - 1) * 2 - 1)
-        : (numRounds - 1) * 2;
+      const numLoserRounds = elimType === 'championship' ? Math.max(0, (numRounds - 1) * 2 - 1) : (numRounds - 1) * 2;
       let currentMatchesCount = bracketSize / 4;
 
       for (let lr = 1; lr <= numLoserRounds; lr++) {
@@ -842,9 +850,7 @@ globalThis.TournamentLogic = (() => {
       }
 
       if (elimType === 'double') {
-        grandFinals = [
-          createMatchSlot(1, 0, 'grandFinal', 'Grand Finals (Match 1)')
-        ];
+        grandFinals = [createMatchSlot(1, 0, 'grandFinal', 'Grand Finals (Match 1)')];
       }
     }
 
@@ -853,8 +859,8 @@ globalThis.TournamentLogic = (() => {
     // either playable or decided by a BYE.
     // (Championship: a Round 1 that is also the final Winners round keeps
     // its loser out of the Losers Bracket.)
-    const dropsToLosers = Boolean(losersRounds && losersRounds.length > 0)
-      && !(elimType === 'championship' && winnersRounds.length === 1);
+    const dropsToLosers =
+      Boolean(losersRounds && losersRounds.length > 0) && !(elimType === 'championship' && winnersRounds.length === 1);
     const round1 = winnersRounds[0];
     round1.forEach((match, i) => {
       const t1 = seededSlots[i * 2];
@@ -884,9 +890,12 @@ globalThis.TournamentLogic = (() => {
     });
 
     // Advance BYE winners from Round 1 to Round 2 (or Grand Finals if 2-team single elim)
-    const advanceTarget = winnersRounds.length > 1
-      ? (mIdx) => winnersRounds[1][Math.floor(mIdx / 2)]
-      : (elimType === 'single' ? () => grandFinals[0] : null);
+    const advanceTarget =
+      winnersRounds.length > 1
+        ? mIdx => winnersRounds[1][Math.floor(mIdx / 2)]
+        : elimType === 'single'
+          ? () => grandFinals[0]
+          : null;
     if (advanceTarget) {
       round1.forEach((m, mIdx) => {
         if (m.status !== 'DONE') return;
@@ -917,7 +926,18 @@ globalThis.TournamentLogic = (() => {
 
   // Validates the bracket modal and builds teams + bracket.
   // Returns { error } or { bracket }.
-  function createBracket({ rankedPlayers, teamCount, format, teamFormationStrategy, seedingStrategy, customTeams, leaderboardPlayers, elimType, maxGames, random = Math.random }) {
+  function createBracket({
+    rankedPlayers,
+    teamCount,
+    format,
+    teamFormationStrategy,
+    seedingStrategy,
+    customTeams,
+    leaderboardPlayers,
+    elimType,
+    maxGames,
+    random = Math.random
+  }) {
     const parsedTeamCount = parseInt(teamCount, 10);
     if (isNaN(parsedTeamCount) || parsedTeamCount < 2) {
       return { error: 'Please enter a valid number of teams (minimum 2).' };
@@ -925,10 +945,21 @@ globalThis.TournamentLogic = (() => {
 
     const requiredPlayers = format === '2v2' ? parsedTeamCount * 2 : parsedTeamCount;
     if (rankedPlayers.length < requiredPlayers) {
-      return { error: `Not enough ranked players on the leaderboard. Need at least ${requiredPlayers} players for ${parsedTeamCount} teams in ${format} format.` };
+      return {
+        error: `Not enough ranked players on the leaderboard. Need at least ${requiredPlayers} players for ${parsedTeamCount} teams in ${format} format.`
+      };
     }
 
-    const teams = buildBracketTeams(rankedPlayers, parsedTeamCount, format, teamFormationStrategy, seedingStrategy, customTeams, leaderboardPlayers, random);
+    const teams = buildBracketTeams(
+      rankedPlayers,
+      parsedTeamCount,
+      format,
+      teamFormationStrategy,
+      seedingStrategy,
+      customTeams,
+      leaderboardPlayers,
+      random
+    );
     return { bracket: generateBracketStructure(teams, elimType, maxGames) };
   }
 
@@ -994,7 +1025,10 @@ globalThis.TournamentLogic = (() => {
       const finalMatch = wRounds && wRounds.length > 0 ? wRounds[wRounds.length - 1][0] : null;
       const finalDone = Boolean(finalMatch && finalMatch.status === 'DONE');
       const lRounds = bracket.losersRounds;
-      const losersDone = !lRounds || lRounds.length === 0 || Boolean(lRounds[lRounds.length - 1][0] && lRounds[lRounds.length - 1][0].status === 'DONE');
+      const losersDone =
+        !lRounds ||
+        lRounds.length === 0 ||
+        Boolean(lRounds[lRounds.length - 1][0] && lRounds[lRounds.length - 1][0].status === 'DONE');
       return finalDone && losersDone;
     }
     if (bracket.type === 'double') {
@@ -1005,10 +1039,9 @@ globalThis.TournamentLogic = (() => {
     return false;
   }
 
-  function advanceWinnersBracket(bracket, rIdx, mIdx, winningTeam, losingTeam) {
+  // Winner moves to the next Winners round, or into the Grand Finals.
+  function advanceWinnerUpward(bracket, rIdx, mIdx, winningTeam) {
     const numRounds = bracket.winnersRounds.length;
-    const isSemiFinalRound = bracket.type === 'single' ? (rIdx === numRounds - 1) : (rIdx === numRounds - 2);
-
     if (rIdx + 1 < numRounds) {
       const next = bracket.winnersRounds[rIdx + 1][Math.floor(mIdx / 2)];
       if (mIdx % 2 === 0) next.team1 = winningTeam;
@@ -1021,61 +1054,72 @@ globalThis.TournamentLogic = (() => {
       else gf.team1 = winningTeam;
       if (bothRealTeams(gf)) gf.status = 'READY';
     }
+  }
 
-    // Propagate Semi-Final losers to 3rd/4th Place Match in Single Elimination
-    if (bracket.type === 'single' && isSemiFinalRound && bracket.thirdPlaceMatch) {
-      const tpm = bracket.thirdPlaceMatch;
-      if (mIdx === 0) {
-        tpm.team1 = losingTeam;
-        tpm.hasPropagatedT1 = true;
-      } else if (mIdx === 1) {
-        tpm.team2 = losingTeam;
-        tpm.hasPropagatedT2 = true;
-      }
+  // Single Elimination: semi-final losers meet in the 3rd/4th Place Match.
+  function dropToThirdPlace(bracket, rIdx, mIdx, losingTeam) {
+    const isSemiFinalRound = rIdx === bracket.winnersRounds.length - 1;
+    const tpm = bracket.thirdPlaceMatch;
+    if (bracket.type !== 'single' || !isSemiFinalRound || !tpm) return;
 
-      if (tpm.team1 && tpm.team2) {
-        const t1Bye = tpm.team1.isBye;
-        const t2Bye = tpm.team2.isBye;
-        if (t1Bye || t2Bye) {
-          tpm.winner = t1Bye && !t2Bye ? 2 : 1;
-          tpm.status = 'DONE';
-        } else {
-          tpm.status = 'READY';
-        }
-      }
+    if (mIdx === 0) {
+      tpm.team1 = losingTeam;
+      tpm.hasPropagatedT1 = true;
+    } else if (mIdx === 1) {
+      tpm.team2 = losingTeam;
+      tpm.hasPropagatedT2 = true;
     }
 
+    if (tpm.team1 && tpm.team2) {
+      const t1Bye = tpm.team1.isBye;
+      const t2Bye = tpm.team2.isBye;
+      if (t1Bye || t2Bye) {
+        tpm.winner = t1Bye && !t2Bye ? 2 : 1;
+        tpm.status = 'DONE';
+      } else {
+        tpm.status = 'READY';
+      }
+    }
+  }
+
+  // Double / Championship: the loser drops into the Losers Bracket.
+  function dropToLosersBracket(bracket, rIdx, mIdx, losingTeam) {
     // Championship: the final Winners round's loser doesn't drop to the Losers Bracket -
     // that round IS the Grand Finals, and only decides 1st/2nd.
-    const isChampionshipFinalRound = bracket.type === 'championship' && rIdx === numRounds - 1;
-    if ((bracket.type === 'double' || bracket.type === 'championship') && bracket.losersRounds && !isChampionshipFinalRound) {
-      const targetLoserRoundIdx = rIdx === 0 ? 0 : (rIdx - 1) * 2 + 1;
-      const targetLoserRound = bracket.losersRounds[targetLoserRoundIdx];
-      // Anti-rematch mirroring: a Round 1 drop (rIdx === 0) can't collide - two
-      // Round 1 matches never share a team, so their losers never played each
-      // other. From Round 2 on, the "parallel" slot (same match index) would pit
-      // this loser against a losers-bracket survivor who may be the very
-      // opponent they just lost to upstream. Mirroring the index within the
-      // receiving round routes the drop-in to the opposite half of the bracket's
-      // survivor lineage instead, avoiding that immediate re-pairing.
-      const targetLoserMatch = targetLoserRound && targetLoserRound[
-        rIdx === 0 ? Math.floor(mIdx / 2) : targetLoserRound.length - 1 - mIdx
-      ];
+    const isChampionshipFinalRound = bracket.type === 'championship' && rIdx === bracket.winnersRounds.length - 1;
+    const hasLosersBracket = bracket.type === 'double' || bracket.type === 'championship';
+    if (!hasLosersBracket || !bracket.losersRounds || isChampionshipFinalRound) return;
 
-      if (targetLoserMatch) {
-        if (rIdx === 0 && mIdx % 2 !== 0) {
-          targetLoserMatch.team2 = losingTeam;
-          targetLoserMatch.hasPropagatedT2 = true;
-        } else {
-          targetLoserMatch.team1 = losingTeam;
-          targetLoserMatch.hasPropagatedT1 = true;
-        }
-        if (bothRealTeams(targetLoserMatch)) targetLoserMatch.status = 'READY';
+    const targetLoserRound = bracket.losersRounds[rIdx === 0 ? 0 : (rIdx - 1) * 2 + 1];
+    // Anti-rematch mirroring: a Round 1 drop (rIdx === 0) can't collide - two
+    // Round 1 matches never share a team, so their losers never played each
+    // other. From Round 2 on, the "parallel" slot (same match index) would pit
+    // this loser against a losers-bracket survivor who may be the very
+    // opponent they just lost to upstream. Mirroring the index within the
+    // receiving round routes the drop-in to the opposite half of the bracket's
+    // survivor lineage instead, avoiding that immediate re-pairing.
+    const targetLoserMatch =
+      targetLoserRound && targetLoserRound[rIdx === 0 ? Math.floor(mIdx / 2) : targetLoserRound.length - 1 - mIdx];
+
+    if (targetLoserMatch) {
+      if (rIdx === 0 && mIdx % 2 !== 0) {
+        targetLoserMatch.team2 = losingTeam;
+        targetLoserMatch.hasPropagatedT2 = true;
+      } else {
+        targetLoserMatch.team1 = losingTeam;
+        targetLoserMatch.hasPropagatedT1 = true;
       }
-
-      // Trigger BYE auto-advancements in Losers Bracket
-      processLoserBracketByes(bracket.losersRounds);
+      if (bothRealTeams(targetLoserMatch)) targetLoserMatch.status = 'READY';
     }
+
+    // Trigger BYE auto-advancements in Losers Bracket
+    processLoserBracketByes(bracket.losersRounds);
+  }
+
+  function advanceWinnersBracket(bracket, rIdx, mIdx, winningTeam, losingTeam) {
+    advanceWinnerUpward(bracket, rIdx, mIdx, winningTeam);
+    dropToThirdPlace(bracket, rIdx, mIdx, losingTeam);
+    dropToLosersBracket(bracket, rIdx, mIdx, losingTeam);
   }
 
   function advanceLosersBracket(bracket, rIdx, mIdx, winningTeam) {
@@ -1148,9 +1192,11 @@ globalThis.TournamentLogic = (() => {
     if (!bracketData) return [];
 
     const standings = [];
-    const push = (place, team) => { if (team) standings.push({ place, team }); };
-    const winnerOf = m => m.winner === 1 ? m.team1 : m.team2;
-    const loserOf = m => m.winner === 1 ? m.team2 : m.team1;
+    const push = (place, team) => {
+      if (team) standings.push({ place, team });
+    };
+    const winnerOf = m => (m.winner === 1 ? m.team1 : m.team2);
+    const loserOf = m => (m.winner === 1 ? m.team2 : m.team1);
 
     if (bracketData.type === 'single') {
       const finalMatch = bracketData.grandFinals ? bracketData.grandFinals[0] : null;
@@ -1300,20 +1346,22 @@ globalThis.TournamentLogic = (() => {
     const prefix = `${safeFilePart(tournamentName, 'Tournament')}_${startDate}`;
     const allCompletedMatches = [];
 
-    matches.filter(m => m.status === 'DONE').forEach(m => {
-      allCompletedMatches.push({
-        uniqueId: `${prefix}_MONSTER-${m.id}`,
-        stage: 'Monster',
-        winner: m.winner,
-        team1: m.team1 || [],
-        team2: m.team2 || [],
-        games: m.games || [],
-        isHandicap: m.isHandicap ? 'Yes' : 'No'
+    matches
+      .filter(m => m.status === 'DONE')
+      .forEach(m => {
+        allCompletedMatches.push({
+          uniqueId: `${prefix}_MONSTER-${m.id}`,
+          stage: 'Monster',
+          winner: m.winner,
+          team1: m.team1 || [],
+          team2: m.team2 || [],
+          games: m.games || [],
+          isHandicap: m.isHandicap ? 'Yes' : 'No'
+        });
       });
-    });
 
     if (bracketData) {
-      const teamPlayers = team => team ? (Array.isArray(team.players) ? team.players : [team]) : [];
+      const teamPlayers = team => (team ? (Array.isArray(team.players) ? team.players : [team]) : []);
       listBracketMatches(bracketData).forEach(({ match: m }) => {
         if (m.status === 'DONE' && m.winner) {
           allCompletedMatches.push({
@@ -1335,7 +1383,7 @@ globalThis.TournamentLogic = (() => {
   function winLoseNames(m) {
     const winTeam = m.winner === 1 ? m.team1 : m.team2;
     const loseTeam = m.winner === 1 ? m.team2 : m.team1;
-    const name = (team, i) => team[i] ? team[i].name : '';
+    const name = (team, i) => (team[i] ? team[i].name : '');
     return {
       winP1: name(winTeam, 0),
       winP2: name(winTeam, 1),
@@ -1364,16 +1412,16 @@ globalThis.TournamentLogic = (() => {
   }
 
   const CSV_HEADERS = [
-    "Match ID",
-    "Date",
-    "Game Number",
-    "Winning Score",
-    "Losing Score",
-    "Winning Player 1",
-    "Winning Player 2",
-    "Losing Player 1",
-    "Losing Player 2",
-    "Handicap Override"
+    'Match ID',
+    'Date',
+    'Game Number',
+    'Winning Score',
+    'Losing Score',
+    'Winning Player 1',
+    'Winning Player 2',
+    'Losing Player 1',
+    'Losing Player 2',
+    'Handicap Override'
   ];
 
   function csvQuote(value) {
@@ -1384,27 +1432,29 @@ globalThis.TournamentLogic = (() => {
   function buildCsv(completedMatches, startDate) {
     if (completedMatches.length === 0) return null;
 
-    const rows = [CSV_HEADERS.join(",")];
+    const rows = [CSV_HEADERS.join(',')];
     completedMatches.forEach(m => {
       const { winP1, winP2, loseP1, loseP2 } = winLoseNames(m);
       m.games.forEach((game, gIdx) => {
         const { winScore, loseScore } = winLoseScores(m, game);
         if (isNaN(winScore) || isNaN(loseScore)) return;
-        rows.push([
-          csvQuote(m.uniqueId),
-          startDate,
-          gIdx + 1,
-          winScore,
-          loseScore,
-          csvQuote(winP1),
-          csvQuote(winP2),
-          csvQuote(loseP1),
-          csvQuote(loseP2),
-          csvQuote(m.isHandicap)
-        ].join(","));
+        rows.push(
+          [
+            csvQuote(m.uniqueId),
+            startDate,
+            gIdx + 1,
+            winScore,
+            loseScore,
+            csvQuote(winP1),
+            csvQuote(winP2),
+            csvQuote(loseP1),
+            csvQuote(loseP2),
+            csvQuote(m.isHandicap)
+          ].join(',')
+        );
       });
     });
-    return rows.join("\n");
+    return rows.join('\n');
   }
 
   function csvFileName(tournamentName, startDate) {
@@ -1413,9 +1463,9 @@ globalThis.TournamentLogic = (() => {
 
   // Triggers a browser download of the CSV via a temporary <a download> link.
   function downloadCsv(csvText, fileName, doc = globalThis.document) {
-    const link = doc.createElement("a");
-    link.setAttribute("href", encodeURI("data:text/csv;charset=utf-8," + csvText));
-    link.setAttribute("download", fileName);
+    const link = doc.createElement('a');
+    link.setAttribute('href', encodeURI('data:text/csv;charset=utf-8,' + csvText));
+    link.setAttribute('download', fileName);
     doc.body.appendChild(link);
     link.click();
     doc.body.removeChild(link);

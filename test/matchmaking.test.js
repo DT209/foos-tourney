@@ -31,7 +31,10 @@ describe('drawFairMatch', () => {
 
   it('requires 4 free active players for 2v2 and 2 for 1v1', () => {
     assert.equal(L.drawFairMatch(players(3), []).error, 'Not enough available players. Found 3, need at least 4.');
-    assert.equal(L.drawFairMatch(players(1), [], '1v1').error, 'Not enough available players. Found 1, need at least 2.');
+    assert.equal(
+      L.drawFairMatch(players(1), [], '1v1').error,
+      'Not enough available players. Found 1, need at least 2.'
+    );
   });
 
   it('ignores invalid, paused and busy players; accepts legacy isActive', () => {
@@ -56,7 +59,10 @@ describe('drawFairMatch', () => {
     const history = [match('DONE', [a], [b])];
     // random=0 everywhere: p1 is the first player (a); b is a repeat opponent.
     const result = L.drawFairMatch([a, b, c], history, '1v1', zero);
-    assert.deepEqual([result.team1, result.team2].map(t => t[0].id), [1, 3]);
+    assert.deepEqual(
+      [result.team1, result.team2].map(t => t[0].id),
+      [1, 3]
+    );
   });
 
   it('prioritises players who have missed the most draws', () => {
@@ -74,10 +80,7 @@ describe('drawFairMatch', () => {
   it('2v2: avoids repeat teammates and opponents', () => {
     const roster = players(6);
     const [a, b, c, d, e, f] = roster;
-    const history = [
-      match('DONE', [a, b], [c, d]),
-      match('DONE', [a, e], [f, c])
-    ];
+    const history = [match('DONE', [a, b], [c, d]), match('DONE', [a, e], [f, c])];
     const result = L.drawFairMatch(roster, history, '2v2', zero);
     // p1 = a. Teammate: c, d, f are fresh partners; c first. Then opponents of
     // a & c: b (a faced? no; c faced b) ... the cheapest remaining pairings.
@@ -92,7 +95,9 @@ describe('drawFairMatch', () => {
   it('updates draw-missed counters: drawn reset, idle eligible +1, others unchanged', () => {
     const roster = [
       player(1, 'A', { eligibleDrawsMissed: 3 }),
-      player(2), player(3), player(4),
+      player(2),
+      player(3),
+      player(4),
       player(5, 'Idle'),
       { id: 6, name: 'NoCounter', active: true },
       player(7, 'Paused', { active: false }),
@@ -103,7 +108,8 @@ describe('drawFairMatch', () => {
     const byId = Object.fromEntries(result.updatedPlayers.map(p => [p.id, p]));
     const drawn = [...result.team1, ...result.team2].map(p => p.id);
     drawn.forEach(id => assert.equal(byId[id].eligibleDrawsMissed, 0));
-    roster.filter(p => p.active && p.id !== 8 && !drawn.includes(p.id))
+    roster
+      .filter(p => p.active && p.id !== 8 && !drawn.includes(p.id))
       .forEach(p => assert.equal(byId[p.id].eligibleDrawsMissed, (p.eligibleDrawsMissed || 0) + 1));
     assert.equal(byId[7], roster[6]);
     assert.equal(byId[8], roster[7]);

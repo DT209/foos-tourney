@@ -1,32 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calgary Foosball Club - Tournament Manager</title>
-  
+
   <!-- SEO & Social Meta Tags -->
-  <meta name="description" content="Official Calgary Foosball Club Tournament Manager for monster draw and bracket playoff management." />
-  <meta name="keywords" content="Calgary Foosball, Foosball Tournament, Table Soccer, Matchmaking, Brackets" />
-  <meta name="author" content="Calgary Foosball Club" />
+  <meta name="description" content="Official Calgary Foosball Club Tournament Manager for monster draw and bracket playoff management.">
+  <meta name="keywords" content="Calgary Foosball, Foosball Tournament, Table Soccer, Matchmaking, Brackets">
+  <meta name="author" content="Calgary Foosball Club">
 
   <!-- Open Graph / Facebook -->
-  <meta property="og:type" content="website" />
-  <meta property="og:title" content="Calgary Foosball Club - Tournament Manager" />
-  <meta property="og:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets." />
-  <meta property="og:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png" />
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Calgary Foosball Club - Tournament Manager">
+  <meta property="og:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets.">
+  <meta property="og:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Calgary Foosball Club - Tournament Manager" />
-  <meta name="twitter:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets." />
-  <meta property="twitter:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png" />
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Calgary Foosball Club - Tournament Manager">
+  <meta name="twitter:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets.">
+  <meta property="twitter:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png">
 
   <!-- React & Babel CDNs -->
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  
+
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -60,7 +60,7 @@
 
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
-      checkPin, findLeaderboardPlayer, getLeaderboardInfo, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS,
+      sanitizeInput, checkPin, getLeaderboardInfo, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
       countActivePlayers, hasPausedPlayers, computeStandings,
       togglePickerSelection, getLeaderboardPickerView, toggleSelectAll, getPlayerSuggestions,

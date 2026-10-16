@@ -17,7 +17,13 @@ describe('buildBracketTeams', () => {
   it('1v1 ranking seeding keeps Monster rank order', () => {
     const ts = L.buildBracketTeams(ranked, 3, '1v1', 'fair', 'ranking');
     assert.deepEqual(names(ts), ['P1', 'P2', 'P3']);
-    assert.deepEqual(ts[0], { id: 'team-1', name: 'P1', players: [ranked[0]], monsterRank: 1, seedValue: Math.pow(2, 2 / 5) });
+    assert.deepEqual(ts[0], {
+      id: 'team-1',
+      name: 'P1',
+      players: [ranked[0]],
+      monsterRank: 1,
+      seedValue: Math.pow(2, 2 / 5)
+    });
   });
 
   it('1v1 ELO seeding uses singles ELO, guests and unranked default to 1000', () => {
@@ -28,7 +34,10 @@ describe('buildBracketTeams', () => {
     ];
     const ts = L.buildBracketTeams(players(4), 4, '1v1', 'fair', 'elo', [], lb);
     assert.deepEqual(names(ts), ['P3', 'P2', 'P4', 'P1']);
-    assert.deepEqual(ts.map(t => t.seedValue), [1200, 1000, 1000, 900]);
+    assert.deepEqual(
+      ts.map(t => t.seedValue),
+      [1200, 1000, 1000, 900]
+    );
   });
 
   it('1v1 random seeding shuffles with the injected random', () => {
@@ -41,12 +50,25 @@ describe('buildBracketTeams', () => {
     // still get a value. An id the map lacks falls back to 0.
     const ts = L.buildBracketTeams(players(2), 2, '1v1', 'fair', 'none');
     assert.deepEqual(names(ts), ['P1', 'P2']);
-    const zeroSeed = L.buildBracketTeams([{ id: 1, name: 'Z' }], 1, '1v1', 'fair', 'elo', [], [{ name: 'Z', singlesElo: 0 }]);
+    const zeroSeed = L.buildBracketTeams(
+      [{ id: 1, name: 'Z' }],
+      1,
+      '1v1',
+      'fair',
+      'elo',
+      [],
+      [{ name: 'Z', singlesElo: 0 }]
+    );
     assert.equal(zeroSeed[0].seedValue, 0);
   });
 
   it('2v2 fair pairs 1st with last', () => {
-    assert.deepEqual(names(L.buildBracketTeams(ranked, 4, '2v2', 'fair', 'ranking')), ['P1 & P8', 'P2 & P7', 'P3 & P6', 'P4 & P5']);
+    assert.deepEqual(names(L.buildBracketTeams(ranked, 4, '2v2', 'fair', 'ranking')), [
+      'P1 & P8',
+      'P2 & P7',
+      'P3 & P6',
+      'P4 & P5'
+    ]);
   });
 
   it('2v2 topBias pairs neighbours and drops an odd player', () => {
@@ -56,7 +78,10 @@ describe('buildBracketTeams', () => {
 
   it('2v2 topBottomRandom pairs each top-half player with a shuffled bottom-half one', () => {
     const ts = L.buildBracketTeams(ranked, 4, '2v2', 'topBottomRandom', 'none', [], [], zero);
-    assert.deepEqual(ts.map(t => t.players[0].id), [1, 2, 3, 4]);
+    assert.deepEqual(
+      ts.map(t => t.players[0].id),
+      [1, 2, 3, 4]
+    );
     assert.deepEqual(ts.map(t => t.players[1].id).sort(), [5, 6, 7, 8]);
     // Odd count: the top half is larger, so one top player goes unpaired.
     assert.equal(L.buildBracketTeams(players(3), 2, '2v2', 'topBottomRandom', 'none', [], [], zero).length, 1);
@@ -72,10 +97,15 @@ describe('buildBracketTeams', () => {
   it('2v2 manual uses custom teams, tolerating empty slots', () => {
     const [a, b, c] = players(3);
     const ts = L.buildBracketTeams([a, b, c], 3, '2v2', 'manual', 'none', [
-      { p1: a, p2: b }, { p1: c, p2: null }, { p1: null, p2: null }
+      { p1: a, p2: b },
+      { p1: c, p2: null },
+      { p1: null, p2: null }
     ]);
     assert.deepEqual(names(ts), ['P1 & P2', 'P3', 'TBD Team']);
-    assert.deepEqual(ts.map(t => t.seedValue > 0), [true, true, false]);
+    assert.deepEqual(
+      ts.map(t => t.seedValue > 0),
+      [true, true, false]
+    );
   });
 
   it('2v2 manual players outside the qualified group seed at 0', () => {
@@ -89,7 +119,12 @@ describe('buildBracketTeams', () => {
   });
 
   it('2v2 ELO team seed is 60% higher + 40% lower doubles ELO', () => {
-    const lb = [{ name: 'P1', doublesElo: 1000 }, { name: 'P2', doublesElo: 1500 }, { name: 'P3', doublesElo: 1100 }, { name: 'P4', doublesElo: 1100 }];
+    const lb = [
+      { name: 'P1', doublesElo: 1000 },
+      { name: 'P2', doublesElo: 1500 },
+      { name: 'P3', doublesElo: 1100 },
+      { name: 'P4', doublesElo: 1100 }
+    ];
     const ts = L.buildBracketTeams(players(4), 2, '2v2', 'topBias', 'elo', [], lb);
     assert.deepEqual(names(ts), ['P1 & P2', 'P3 & P4']);
     assert.equal(ts[0].seedValue, 0.6 * 1500 + 0.4 * 1000);
@@ -100,7 +135,10 @@ describe('buildBracketTeams', () => {
 
   it('2v2 random seeding shuffles teams; returned ids follow final order', () => {
     const ts = L.buildBracketTeams(ranked, 4, '2v2', 'fair', 'random', [], [], seq(0.9, 0.1, 0.5));
-    assert.deepEqual(ts.map(t => t.id), ['team-1', 'team-2', 'team-3', 'team-4']);
+    assert.deepEqual(
+      ts.map(t => t.id),
+      ['team-1', 'team-2', 'team-3', 'team-4']
+    );
     assert.equal(ts.length, 4);
   });
 
@@ -114,8 +152,25 @@ describe('manual team helpers', () => {
   const ranked = players(5);
 
   it('buildManualTeams pre-fills in rank order, null when short', () => {
-    assert.deepEqual(L.buildManualTeams(ranked, 3, '2v2').map(t => [t.p1 && t.p1.id, t.p2 && t.p2.id]), [[1, 2], [3, 4], [5, null]]);
-    assert.deepEqual(L.buildManualTeams(ranked, '6', '1v1').map(t => [t.p1 && t.p1.id, t.p2]), [[1, null], [2, null], [3, null], [4, null], [5, null], [null, null]]);
+    assert.deepEqual(
+      L.buildManualTeams(ranked, 3, '2v2').map(t => [t.p1 && t.p1.id, t.p2 && t.p2.id]),
+      [
+        [1, 2],
+        [3, 4],
+        [5, null]
+      ]
+    );
+    assert.deepEqual(
+      L.buildManualTeams(ranked, '6', '1v1').map(t => [t.p1 && t.p1.id, t.p2]),
+      [
+        [1, null],
+        [2, null],
+        [3, null],
+        [4, null],
+        [5, null],
+        [null, null]
+      ]
+    );
     assert.equal(L.buildManualTeams(ranked, 'abc', '2v2').length, 2);
     assert.deepEqual(L.buildManualTeams(ranked, 4, '2v2')[3], { p1: null, p2: null });
   });
@@ -126,7 +181,10 @@ describe('manual team helpers', () => {
   });
 
   it('setManualTeamPlayer sets one slot immutably; blank clears it', () => {
-    const tms = [{ p1: null, p2: null }, { p1: null, p2: null }];
+    const tms = [
+      { p1: null, p2: null },
+      { p1: null, p2: null }
+    ];
     const updated = L.setManualTeamPlayer(tms, 1, 'p2', ranked, '3');
     assert.equal(updated[1].p2, ranked[2]);
     assert.equal(updated[0], tms[0]);
@@ -152,16 +210,35 @@ describe('generateBracketStructure', () => {
     assert.equal(b.thirdPlaceMatch.label, '3rd / 4th Place Match');
     assert.equal(b.winnersRounds[0][0].label, 'Match 1');
     assert.equal(b.winnersRounds[0][0].games.length, 3);
-    assert.deepEqual(b.winnersRounds[0].map(m => [m.team1.name, m.team2.name]), [['T1', 'T8'], ['T4', 'T5'], ['T2', 'T7'], ['T3', 'T6']]);
+    assert.deepEqual(
+      b.winnersRounds[0].map(m => [m.team1.name, m.team2.name]),
+      [
+        ['T1', 'T8'],
+        ['T4', 'T5'],
+        ['T2', 'T7'],
+        ['T3', 'T6']
+      ]
+    );
     assert.ok(b.winnersRounds[0].every(m => m.status === 'READY'));
-    assert.deepEqual({ type: b.type, maxGames: b.maxGames, isCompleted: b.isCompleted }, { type: 'single', maxGames: 3, isCompleted: false });
+    assert.deepEqual(
+      { type: b.type, maxGames: b.maxGames, isCompleted: b.isCompleted },
+      { type: 'single', maxGames: 3, isCompleted: false }
+    );
     assert.equal(b.originalTeams.length, 8);
   });
 
   it('single elimination with BYEs advances top seeds into round 2', () => {
     const b = L.generateBracketStructure(teams(6), 'single', 1);
     const r1 = b.winnersRounds[0];
-    assert.deepEqual(r1.map(m => [m.status, m.winner]), [['DONE', 1], ['READY', null], ['DONE', 1], ['READY', null]]);
+    assert.deepEqual(
+      r1.map(m => [m.status, m.winner]),
+      [
+        ['DONE', 1],
+        ['READY', null],
+        ['DONE', 1],
+        ['READY', null]
+      ]
+    );
     assert.equal(b.winnersRounds[1][0].team1.name, 'T1');
     assert.equal(b.winnersRounds[1][1].team1.name, 'T2');
     assert.equal(b.winnersRounds[1][0].status, 'PENDING');
@@ -310,8 +387,16 @@ describe('processLoserBracketByes / advanceLoserWinner', () => {
 
 describe('createBracket', () => {
   const opts = {
-    rankedPlayers: players(8), teamCount: '4', format: '2v2', teamFormationStrategy: 'fair',
-    seedingStrategy: 'ranking', customTeams: [], leaderboardPlayers: [], elimType: 'single', maxGames: 3, random: zero
+    rankedPlayers: players(8),
+    teamCount: '4',
+    format: '2v2',
+    teamFormationStrategy: 'fair',
+    seedingStrategy: 'ranking',
+    customTeams: [],
+    leaderboardPlayers: [],
+    elimType: 'single',
+    maxGames: 3,
+    random: zero
   };
 
   it('rejects invalid team counts', () => {
@@ -334,7 +419,7 @@ describe('createBracket', () => {
   });
 
   it('defaults to Math.random', () => {
-    const { random, ...rest } = opts;
+    const { random: _random, ...rest } = opts;
     assert.ok(L.createBracket({ ...rest, seedingStrategy: 'random' }).bracket);
   });
 });
@@ -357,6 +442,9 @@ describe('resetBracket / clearMatchResults', () => {
     const result = L.clearMatchResults(roster, null);
     assert.deepEqual(result, { matches: [], bracketData: null, players: [player(1)] });
     const b = L.generateBracketStructure(teams(4), 'single', 1);
-    assert.deepEqual(L.clearMatchResults([], b).bracketData.winnersRounds[0].map(m => m.status), ['READY', 'READY']);
+    assert.deepEqual(
+      L.clearMatchResults([], b).bracketData.winnersRounds[0].map(m => m.status),
+      ['READY', 'READY']
+    );
   });
 });

@@ -5,7 +5,11 @@ const { L, zero, player, players } = require('./helpers');
 describe('createGameSlots', () => {
   it('creates independent blank games', () => {
     const slots = L.createGameSlots(3);
-    assert.deepEqual(slots, [{ t1: '', t2: '' }, { t1: '', t2: '' }, { t1: '', t2: '' }]);
+    assert.deepEqual(slots, [
+      { t1: '', t2: '' },
+      { t1: '', t2: '' },
+      { t1: '', t2: '' }
+    ]);
     assert.notEqual(slots[0], slots[1]);
   });
 });
@@ -48,7 +52,14 @@ describe('drawMonsterMatch', () => {
     assert.equal(result.matches.length, 1);
     const m = result.matches[0];
     assert.deepEqual(
-      { id: m.id, table: m.table, type: m.type, status: m.status, isHandicap: m.isHandicap, overrideWinner: m.overrideWinner },
+      {
+        id: m.id,
+        table: m.table,
+        type: m.type,
+        status: m.status,
+        isHandicap: m.isHandicap,
+        overrideWinner: m.overrideWinner
+      },
       { id: 99, table: 1, type: '2v2', status: 'LIVE', isHandicap: false, overrideWinner: null }
     );
     assert.equal(m.games.length, 3);
@@ -57,13 +68,21 @@ describe('drawMonsterMatch', () => {
   });
 
   it('defaults to Math.random', () => {
-    const { random, ...noRandom } = base;
+    const { random: _random, ...noRandom } = base;
     assert.equal(L.drawMonsterMatch(noRandom).matches.length, 1);
   });
 });
 
 describe('monster match edits', () => {
-  const m = { id: 1, games: [{ t1: '', t2: '' }, { t1: 1, t2: 2 }], isHandicap: false, overrideWinner: null };
+  const m = {
+    id: 1,
+    games: [
+      { t1: '', t2: '' },
+      { t1: 1, t2: 2 }
+    ],
+    isHandicap: false,
+    overrideWinner: null
+  };
   const other = { id: 2, games: [] };
   const matches = [m, other];
 
@@ -117,8 +136,16 @@ describe('getMatchWinner', () => {
 describe('completeMonsterMatch', () => {
   const [a, b, c, d, bystander] = players(5);
   const live = {
-    id: 1, team1: [a, b], team2: [c, d], status: 'LIVE', isHandicap: false,
-    games: [{ t1: 5, t2: 3 }, { t1: '5', t2: 4 }, { t1: '', t2: '' }]
+    id: 1,
+    team1: [a, b],
+    team2: [c, d],
+    status: 'LIVE',
+    isHandicap: false,
+    games: [
+      { t1: 5, t2: 3 },
+      { t1: '5', t2: 4 },
+      { t1: '', t2: '' }
+    ]
   };
   const other = { id: 2, status: 'LIVE' };
 
@@ -127,11 +154,17 @@ describe('completeMonsterMatch', () => {
   });
 
   it('errors when no team has enough wins', () => {
-    const undecided = { ...live, games: [{ t1: 5, t2: 3 }, { t1: '', t2: '' }, { t1: '', t2: '' }] };
-    assert.deepEqual(
-      L.completeMonsterMatch([a], [undecided], 1),
-      { error: 'Cannot complete match: No team has secured enough game wins.' }
-    );
+    const undecided = {
+      ...live,
+      games: [
+        { t1: 5, t2: 3 },
+        { t1: '', t2: '' },
+        { t1: '', t2: '' }
+      ]
+    };
+    assert.deepEqual(L.completeMonsterMatch([a], [undecided], 1), {
+      error: 'Cannot complete match: No team has secured enough game wins.'
+    });
   });
 
   it('credits wins, losses and goals and marks the match DONE', () => {
@@ -149,7 +182,10 @@ describe('completeMonsterMatch', () => {
   it('credits Team 2 when it wins (via handicap override)', () => {
     const forced = { ...live, isHandicap: true, overrideWinner: 2 };
     const result = L.completeMonsterMatch([a, c], [forced], 1);
-    assert.deepEqual(result.players.map(p => p.wins), [0, 1]);
+    assert.deepEqual(
+      result.players.map(p => p.wins),
+      [0, 1]
+    );
   });
 });
 

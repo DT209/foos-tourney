@@ -4,10 +4,27 @@
   "private": true,
   "description": "Calgary Foosball Club tournament manager",
   "scripts": {
+    "build": "node scripts/build.js",
+    "check": "node scripts/build.js --check-only",
+    "lint": "eslint --max-warnings 0 .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate:html": "html-validate TournamentManager.html",
     "test": "node --test test/",
-    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --reporter text --reporter html node --test test/"
+    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --reporter text --reporter html node --test test/",
+    "audit": "npm audit --audit-level=high"
   },
   "devDependencies": {
-    "c8": "^10.1.3"
+    "@eslint/js": "^9.39.5",
+    "c8": "^10.1.3",
+    "eslint": "^9.39.5",
+    "eslint-plugin-html": "^8.2.1",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.13.0",
+    "html-validate": "^10.17.0",
+    "prettier": "^3.9.10"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
