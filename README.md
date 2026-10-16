@@ -3,6 +3,12 @@
 Calgary Foosball Club tournament manager: Monster/DYP open play with fair
 matchmaking, then single, double or championship elimination brackets.
 
+## Working with Claude Code
+
+Project conventions for AI-assisted changes (architecture rules, coverage and
+build constraints, testing approach, known issues) are in
+[`.claude/CLAUDE.md`](.claude/CLAUDE.md). Read it before changing the code.
+
 ## Layout
 
 | File                     | Purpose                                                                 |
