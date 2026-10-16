@@ -3,3 +3,5 @@ coverage/
 dist/
 .nyc_output/
 coverage-ui/
+# Firebase publisher codes saved with "Save code to file" (see docs/firebase-plan.md)
+*.publisher-code.txt

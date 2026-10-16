@@ -94,6 +94,7 @@ there. When you fix one, add a regression test and close the issue in the commit
   updates it. Live data on another host needs the club site to send `Access-Control-Allow-Origin`
   for that host on `/leaderboard/`.
 - Importing from Firebase is a placeholder: the import dialog lists it, disabled, as "coming soon".
+  The agreed design is in `docs/firebase-plan.md`.
   Reading a tournament from remote storage in read-only mode is also not built yet. Today a file
   plays that role.
 - UI tests need Chrome and network access (React, Babel and Tailwind load from CDNs). Use

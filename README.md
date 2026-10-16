@@ -166,7 +166,8 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
     returns to your own tournament.
 - Imported files are validated field by field like saved data. Other JSON files and exports from a
   newer version are rejected with a message.
-- **From Firebase** is listed as an import source but not built yet.
+- **From Firebase** is listed as an import source but not built yet. See the
+  [Firebase publishing plan](docs/firebase-plan.md).
 - Private browsing or blocked site data disables auto-save, and the footer says so.
 - Saves from before tournaments had ids are migrated automatically on first load.
 
