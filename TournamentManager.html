@@ -60,7 +60,8 @@
 
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
-      sanitizeInput, checkPin, getLeaderboardInfo, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS,
+      sanitizeInput, submitPin, forgetPin, getLeaderboardInfo,
+      restoreTournamentState, saveTournament, loadTournament, getBrowserStorage, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
       countActivePlayers, hasPausedPlayers, computeStandings,
       togglePickerSelection, getLeaderboardPickerView, toggleSelectAll, getPlayerSuggestions,
@@ -193,26 +194,31 @@
     // ==========================================
 
     function FoosballApp() {
+      // Restore the tournament saved in this browser (or defaults) once, on load.
+      const [storage] = useState(() => getBrowserStorage());
+      const [restored] = useState(() => restoreTournamentState(loadTournament(storage), todayIsoDate()));
+      const [isSaved, setIsSaved] = useState(true);
+
       // Configuration State
-      const [tournamentName, setTournamentName] = useState('Thursday DYP');
-      const [startDate] = useState(() => todayIsoDate());
-      const [tableCount, setTableCount] = useState(2);
-      const [format, setFormat] = useState('2v2');
-      const [maxGames, setMaxGames] = useState(3);
-      const [activeTab, setActiveTab] = useState('pool');
+      const [tournamentName, setTournamentName] = useState(restored.tournamentName);
+      const [startDate, setStartDate] = useState(restored.startDate);
+      const [tableCount, setTableCount] = useState(restored.tableCount);
+      const [format, setFormat] = useState(restored.format);
+      const [maxGames, setMaxGames] = useState(restored.maxGames);
+      const [activeTab, setActiveTab] = useState(restored.activeTab);
       const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
       const [showClearMatchesWarning, setShowClearMatchesWarning] = useState(false);
       const [showFullResetWarning, setShowFullResetWarning] = useState(false);
       
       // Admin Lock State - tool is fully unlocked (editable) by default.
-      // Entering the correct PIN toggles between full access and View Only mode.
-      const [adminPin] = useState('1234');
-      const [isLocked, setIsLocked] = useState(false);
+      // The first lock sets the PIN; after that the PIN toggles View Only mode.
+      const [adminPin, setAdminPin] = useState(restored.adminPin);
+      const [isLocked, setIsLocked] = useState(restored.isLocked);
       const [pinInput, setPinInput] = useState('');
       const [showPinModal, setShowPinModal] = useState(false);
 
       // Player State
-      const [players, setPlayers] = useState([]);
+      const [players, setPlayers] = useState(restored.players);
       const [newPlayerName, setNewPlayerName] = useState('');
       const [editingPlayerId, setEditingPlayerId] = useState(null);
       const [editingName, setEditingName] = useState('');
@@ -242,28 +248,51 @@
       }, []);
 
       // Matches & Bracket State
-      const [matches, setMatches] = useState([]);
+      const [matches, setMatches] = useState(restored.matches);
       const [showBracketModal, setShowBracketModal] = useState(false);
-      const [bracketTeamCount, setBracketTeamCount] = useState(4);
-      const [bracketElimType, setBracketElimType] = useState('single');
-      const [bracketMaxGames, setBracketMaxGames] = useState(3);
-      const [teamFormationStrategy, setTeamFormationStrategy] = useState('fair');
-      const [seedingStrategy, setSeedingStrategy] = useState('ranking');
-      const [bracketData, setBracketData] = useState(null);
-      const [customTeams, setCustomTeams] = useState([]);
+      const [bracketTeamCount, setBracketTeamCount] = useState(restored.bracketTeamCount);
+      const [bracketElimType, setBracketElimType] = useState(restored.bracketElimType);
+      const [bracketMaxGames, setBracketMaxGames] = useState(restored.bracketMaxGames);
+      const [teamFormationStrategy, setTeamFormationStrategy] = useState(restored.teamFormationStrategy);
+      const [seedingStrategy, setSeedingStrategy] = useState(restored.seedingStrategy);
+      const [bracketData, setBracketData] = useState(restored.bracketData);
+      const [customTeams, setCustomTeams] = useState(restored.customTeams);
       const [showWinnerModal, setShowWinnerModal] = useState(false);
       const [showPausedWarningModal, setShowPausedWarningModal] = useState(false);
 
+      // --- AUTO-SAVE ---
+      useEffect(() => {
+        setIsSaved(saveTournament(storage, {
+          tournamentName, startDate, tableCount, format, maxGames, activeTab,
+          players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
+          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin
+        }));
+      }, [storage, tournamentName, startDate, tableCount, format, maxGames, activeTab,
+          players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
+          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin]);
+
       // --- ADMIN LOCK / VIEW ONLY TOGGLE ---
+      const applyLockState = ({ pin, isLocked: locked }) => {
+        setAdminPin(pin);
+        setIsLocked(locked);
+        setShowPinModal(false);
+        setPinInput('');
+      };
+
       const handlePinSubmit = (e) => {
         e.preventDefault();
-        if (checkPin(pinInput, adminPin)) {
-          setIsLocked(prev => !prev);
-          setShowPinModal(false);
+        const result = submitPin({ pin: adminPin, input: pinInput, isLocked });
+        if (result.error) {
+          alert(result.error);
           setPinInput('');
-        } else {
-          alert('Incorrect PIN!');
-          setPinInput('');
+          return;
+        }
+        applyLockState(result);
+      };
+
+      const handleForgotPin = () => {
+        if (confirm('Unlock and clear the PIN? The lock only prevents accidental edits, so anyone at this screen can do this.')) {
+          applyLockState(forgetPin());
         }
       };
 
@@ -349,7 +378,9 @@
         setShowClearMatchesWarning(false);
       };
 
+      // Starts a new tournament: today's date, empty roster, no matches.
       const fullReset = () => {
+        setStartDate(todayIsoDate());
         setMatches([]);
         setBracketData(null);
         setPlayers([]);
@@ -624,17 +655,20 @@
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                 <div className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
                   <h3 className="text-lg font-bold text-cfc-red flex items-center gap-2">
-                    <span>🔒</span> {isLocked ? 'Unlock Tool' : 'Enable Admin Lock'}
+                    <span>🔒</span> {isLocked ? 'Unlock Tool' : adminPin === null ? 'Set Admin PIN' : 'Enable Admin Lock'}
                   </h3>
                   <p className="text-xs text-gray-400">
                     {isLocked
                       ? 'Enter the tournament PIN to exit View Only mode and resume editing.'
-                      : 'Enter the tournament PIN to place the tool into View Only mode.'}
+                      : adminPin === null
+                        ? 'Choose a 4-8 digit PIN. You will need it to unlock, so tell your co-organizers.'
+                        : 'Enter the tournament PIN to place the tool into View Only mode.'}
                   </p>
                   <form onSubmit={handlePinSubmit} className="space-y-4">
                     <input
                       type="password"
-                      maxLength="4"
+                      inputMode="numeric"
+                      maxLength="8"
                       value={pinInput}
                       onChange={e => setPinInput(e.target.value)}
                       placeholder="Enter PIN"
@@ -656,6 +690,15 @@
                         {isLocked ? 'Unlock' : 'Lock'}
                       </button>
                     </div>
+                    {isLocked && (
+                      <button
+                        type="button"
+                        onClick={handleForgotPin}
+                        className="w-full text-[11px] text-gray-500 hover:text-gray-300 underline"
+                      >
+                        Forgot PIN?
+                      </button>
+                    )}
                   </form>
                 </div>
               </div>
@@ -832,7 +875,7 @@
                     <span>⚠️</span> Full Tournament Reset?
                   </h3>
                   <p className="text-xs text-gray-300">
-                    This will permanently delete every player on the roster, along with all matches and the playoff bracket. This cannot be undone.
+                    This will permanently delete every player on the roster, along with all matches and the playoff bracket, and starts a new tournament dated today. This cannot be undone.
                   </p>
                   <div className="flex gap-2">
                     <button
@@ -1779,7 +1822,12 @@
 
           {/* Footer */}
           <footer className="bg-cfc-panel border-t border-cfc-border py-4 text-center text-xs text-gray-400 font-mono">
-            <p>Tournament Manager <span className="text-cfc-red font-bold ml-1">v1.4.27</span></p>
+            <p>Tournament Manager <span className="text-cfc-red font-bold ml-1">v1.5.0</span></p>
+            <p className={isSaved ? 'text-gray-500' : 'text-amber-400'}>
+              {isSaved
+                ? 'Auto-saved in this browser'
+                : 'Auto-save unavailable (private browsing or blocked storage) - a refresh will lose this tournament'}
+            </p>
             <p>Calgary Foosball Club is a registered non-profit </p>
           </footer>
         </div>

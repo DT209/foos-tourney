@@ -29,8 +29,127 @@ globalThis.TournamentLogic = (() => {
     return value === '' ? '' : sanitizeInt(value);
   }
 
-  function checkPin(input, pin) {
-    return input === pin;
+  // ==========================================
+  // ADMIN LOCK
+  // ==========================================
+  // The lock guards a shared screen against accidental edits; it is not
+  // security (the PIN lives in this browser's storage).
+
+  const PIN_PATTERN = /^\d{4,8}$/;
+
+  // With no PIN set, the first submission chooses one and locks. Otherwise
+  // the correct PIN toggles the lock. Returns { error } or { pin, isLocked }.
+  function submitPin({ pin, input, isLocked }) {
+    if (pin === null) {
+      if (!PIN_PATTERN.test(input)) return { error: 'Choose a PIN of 4 to 8 digits.' };
+      return { pin: input, isLocked: true };
+    }
+    if (input !== pin) return { error: 'Incorrect PIN!' };
+    return { pin, isLocked: !isLocked };
+  }
+
+  // Escape hatch for a forgotten PIN: unlock and let the next lock set a new one.
+  function forgetPin() {
+    return { pin: null, isLocked: false };
+  }
+
+  // ==========================================
+  // PERSISTENCE
+  // ==========================================
+  // The tournament auto-saves to localStorage so a refresh or closed tab
+  // doesn't lose it. Saves are versioned; anything unreadable loads as null.
+  // None of these throw: private mode, blocked site data and full storage
+  // all degrade to "not saved".
+
+  const STORAGE_KEY = 'foosTourney.tournament';
+  const STORAGE_VERSION = 1;
+
+  function defaultTournamentState(today) {
+    return {
+      tournamentName: 'Thursday DYP',
+      startDate: today,
+      tableCount: 2,
+      format: '2v2',
+      maxGames: 3,
+      activeTab: 'pool',
+      players: [],
+      matches: [],
+      bracketData: null,
+      bracketTeamCount: 4,
+      bracketElimType: 'single',
+      bracketMaxGames: 3,
+      teamFormationStrategy: 'fair',
+      seedingStrategy: 'ranking',
+      customTeams: [],
+      isLocked: false,
+      adminPin: null
+    };
+  }
+
+  const isPlainObject = v => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+  // Fields whose valid type differs from their default's type.
+  const FIELD_VALIDATORS = {
+    bracketData: v => v === null || isPlainObject(v),
+    bracketTeamCount: v => typeof v === 'number' || typeof v === 'string',
+    adminPin: v => v === null || typeof v === 'string'
+  };
+
+  function isValidField(key, value, fallback) {
+    if (FIELD_VALIDATORS[key]) return FIELD_VALIDATORS[key](value);
+    if (Array.isArray(fallback)) return Array.isArray(value);
+    return typeof value === typeof fallback;
+  }
+
+  // Full initial state: each saved field is kept only if it has a valid type.
+  function restoreTournamentState(saved, today) {
+    const state = defaultTournamentState(today);
+    if (!saved) return state;
+    Object.keys(state).forEach(key => {
+      if (key in saved && isValidField(key, saved[key], state[key])) state[key] = saved[key];
+    });
+    return state;
+  }
+
+  function saveTournament(storage, state) {
+    const persisted = {};
+    Object.keys(defaultTournamentState('')).forEach(key => {
+      persisted[key] = state[key];
+    });
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, state: persisted }));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function loadTournament(storage) {
+    try {
+      const saved = JSON.parse(storage.getItem(STORAGE_KEY));
+      if (!saved || saved.version !== STORAGE_VERSION || !isPlainObject(saved.state)) return null;
+      return saved.state;
+    } catch {
+      return null;
+    }
+  }
+
+  function clearTournament(storage) {
+    try {
+      storage.removeItem(STORAGE_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // window.localStorage, or null where it is missing or access throws.
+  function getBrowserStorage() {
+    try {
+      return globalThis.localStorage || null;
+    } catch {
+      return null;
+    }
   }
 
   // ==========================================
@@ -1496,7 +1615,15 @@ globalThis.TournamentLogic = (() => {
     sanitizeInput,
     sanitizeInt,
     normalizeScoreInput,
-    checkPin,
+    submitPin,
+    forgetPin,
+    // persistence
+    STORAGE_KEY,
+    restoreTournamentState,
+    saveTournament,
+    loadTournament,
+    clearTournament,
+    getBrowserStorage,
     // leaderboard
     FALLBACK_LEADERBOARD_PLAYERS,
     LEADERBOARD_URL,

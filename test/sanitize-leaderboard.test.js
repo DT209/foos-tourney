@@ -35,13 +35,6 @@ describe('normalizeScoreInput', () => {
   });
 });
 
-describe('checkPin', () => {
-  it('matches exactly', () => {
-    assert.equal(L.checkPin('1234', '1234'), true);
-    assert.equal(L.checkPin('123', '1234'), false);
-  });
-});
-
 describe('findLeaderboardPlayer / getLeaderboardInfo', () => {
   const lb = [{ name: 'Ann', singlesElo: 1100, doublesElo: null }];
 

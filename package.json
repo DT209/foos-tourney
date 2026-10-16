@@ -1,6 +1,6 @@
 {
   "name": "foos-tourney",
-  "version": "1.4.27",
+  "version": "1.5.0",
   "private": true,
   "description": "Calgary Foosball Club tournament manager",
   "scripts": {
