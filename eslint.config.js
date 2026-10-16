@@ -29,6 +29,12 @@ module.exports = [
     rules: quality
   },
   {
+    // UI tests run in Node; callbacks passed to page.evaluate run in the browser.
+    files: ['test-e2e/**/*.js'],
+    languageOptions: { sourceType: 'commonjs', globals: { ...globals.node, ...globals.browser } },
+    rules: quality
+  },
+  {
     files: ['**/*.html'],
     plugins: { html, react },
     settings: { 'html/javascript-mime-types': ['text/babel'], react: { version: '18.3' } },

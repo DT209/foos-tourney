@@ -34,25 +34,44 @@ Calgary Foosball Club tournament manager. See `README.md` for layout, deploy and
   assert on standings, not just single steps.
 - For a refactor that should keep behaviour, compare the old and new functions on randomized
   inputs (seeded PRNG) as well as running the unit tests.
-- The UI has no automated tests. After wiring changes, load the page in a browser (serve the folder
-  over HTTP) and click through a roster, a Monster match and a bracket to completion.
+- UI tests live in `test-e2e/` (puppeteer-core + `node:test`). `harness.js` serves the repo, drives
+  the page, freezes the clock with `setClock()` (e.g. to cross midnight), and captures CSV downloads.
+  Add a UI test for any user-visible change. Prefer `data-testid` hooks over styling classes.
+- The build requires 100% UI function coverage: every component, handler and inline callback in the
+  Babel block must run in some UI test. `npm run test:e2e && npm run coverage:ui` lists any that never
+  ran, by line in the compiled script.
+- Fill inputs with `app.fill()` (sets the value and fires `input`, the way React sees typing). Don't
+  use Puppeteer mouse clicks on inputs: they can hang when a card re-renders. Use real keyboard typing
+  only when keystroke behaviour is what's under test.
+- The page renders in `React.StrictMode`, so effects mount, clean up and mount again in development.
+  Effects must be safe to run twice.
 
-## Persistence
+## Tournaments and persistence
 
-- `saveTournament`/`loadTournament` persist the fields listed in `defaultTournamentState`. When adding
-  persisted state: add the field and its default there, add a validator to `FIELD_VALIDATORS` if its
-  type differs from the default's, `useState(restored.x)` in the component, and add it to the auto-save
-  effect's object and dependency list.
-- Bump `STORAGE_VERSION` only for incompatible shape changes. Old saves then load as defaults.
+- Tournaments are identified by `tournamentId` (UUID from `createTournamentId`), never by date. Events
+  run past midnight. Display and export dates come from `tournamentDate(startedAt)`, which uses local
+  time. Don't use `toISOString()` dates for this, because they're UTC.
+- Each tournament is stored at `foosTourney.tournament.<uuid>`, and `foosTourney.currentTournament`
+  points at the active one. `foosTourney.tournament` (no suffix) is the legacy v1 slot, migrated by
+  `loadCurrentTournament`.
+- To add persisted state: add the field and its default to `newTournamentState`, add a validator to
+  `FIELD_VALIDATORS` if its type differs from the default's, add it to `applyTournament` and the
+  auto-save effect (object and dependency list) in the component, and cover it in `test/persistence.test.js`.
+- Bump `STORAGE_VERSION` only for incompatible shape changes, and add a migration when you do.
 - Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams
   by `id`, never by reference.
 
 ## Known limitations
 
-- The live leaderboard only loads when served from calgaryfoosballclub.com (CORS). Elsewhere the page
-  uses the snapshot, which `npm run refresh-leaderboard` updates.
-- The admin PIN is stored in the browser and only guards against accidental edits.
+These match the README's Tournaments, Admin lock and Club leaderboard sections. Keep both in sync.
 
-## Git
-
-- Remote: `git@github.com:DT209/foos-tourney.git`. Commit in small, described steps.
+- Tournaments are saved in one browser's `localStorage` only, not shared across devices or
+  organizers. Private browsing or blocked site data disables saving, and the footer says so.
+- The admin PIN is stored in the browser and only guards against accidental edits. **Forgot PIN?**
+  unlocks after a confirm.
+- The live leaderboard only loads when the page is served from calgaryfoosballclub.com (CORS).
+  Elsewhere the page uses the bundled snapshot and shows its date. `npm run refresh-leaderboard`
+  updates it. Live data on another host needs the club site to send `Access-Control-Allow-Origin`
+  for that host on `/leaderboard/`.
+- UI tests need Chrome and network access (React, Babel and Tailwind load from CDNs). Use
+  `npm run build -- --skip-e2e` where either is missing.

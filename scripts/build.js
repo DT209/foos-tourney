@@ -2,7 +2,7 @@
 // Build pipeline: quality gates, then copy the app to dist/ byte-for-byte.
 // No transpiling, bundling or minifying - the shipped JS is the source JS.
 //
-// Usage: node scripts/build.js [--skip-audit] [--check-only]
+// Usage: node scripts/build.js [--skip-e2e] [--skip-audit] [--check-only]
 
 const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
@@ -44,6 +44,14 @@ function checkModuleContract() {
   console.log(`${imported.length} imports resolve against ${exported.size} exports`);
 }
 
+function e2eFiles() {
+  const dir = path.join(ROOT, 'test-e2e');
+  return fs
+    .readdirSync(dir)
+    .filter(f => f.endsWith('.e2e.js'))
+    .map(f => path.join('test-e2e', f));
+}
+
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
@@ -78,6 +86,8 @@ const steps = [
       'tournament-logic.js',
       '--include',
       'scripts/leaderboard-snapshot.js',
+      '--include',
+      'scripts/coverage-merge.js',
       '--reporter',
       'text',
       '--reporter',
@@ -86,6 +96,19 @@ const steps = [
       '--test',
       'test/'
     )
+  ],
+  [
+    'UI tests (headless Chrome)',
+    args.has('--skip-e2e')
+      ? null
+      : () => {
+          fs.rmSync(path.join(ROOT, 'coverage-ui'), { recursive: true, force: true });
+          run('node', ['--test', '--test-concurrency=1', '--test-timeout=90000', ...e2eFiles()]);
+        }
+  ],
+  [
+    'UI coverage (every UI function runs)',
+    args.has('--skip-e2e') ? null : () => run('node', ['scripts/ui-coverage.js'])
   ],
   [
     'Dependency audit (npm audit, high+)',
