@@ -206,17 +206,5 @@ that host on `/leaderboard/`.
 
 ## Known issues
 
-Open bugs and gaps, each tracked as a GitHub issue for discussion and resolution.
-
-| Issue                                                  | Severity | Summary                                                                                                                       |
-| ------------------------------------------------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [#1](https://github.com/DT209/foos-tourney/issues/1)   | High     | Bracket matches with a missing (TBD) team can be confirmed, advancing an empty team.                                          |
-| [#2](https://github.com/DT209/foos-tourney/issues/2)   | High     | 3-team single elimination never finishes, and the standings list BYE in 3rd place.                                            |
-| [#3](https://github.com/DT209/foos-tourney/issues/3)   | Medium   | Manual pairings need validation: no player twice, no empty teams. One-player teams are allowed on purpose, for singles.       |
-| [#4](https://github.com/DT209/foos-tourney/issues/4)   | Medium   | Lowering Tables Available hides live matches on the removed tables.                                                           |
-| [#5](https://github.com/DT209/foos-tourney/issues/5)   | Medium   | Matches won by handicap override with no scores are missing from the CSV.                                                     |
-| [#10](https://github.com/DT209/foos-tourney/issues/10) | Medium   | New Tournament resets every setting, where the old Full Reset kept the name, tables, format and bracket options.              |
-| [#6](https://github.com/DT209/foos-tourney/issues/6)   | Low      | Automatic BYE wins appear in Match History and the completed count.                                                           |
-| [#7](https://github.com/DT209/foos-tourney/issues/7)   | Low      | Partially entered or tied games still count toward goals for and against.                                                     |
-| [#8](https://github.com/DT209/foos-tourney/issues/8)   | Low      | With an even number of games a tie goes to Team 1. Not reachable: the UI and data validation only allow best of 1, 3, 5 or 7. |
-| [#9](https://github.com/DT209/foos-tourney/issues/9)   | Low      | Players with 0 games rank above players with a 0% win rate, which affects bracket qualification.                              |
+Open bugs and gaps are tracked as [GitHub issues](https://github.com/DT209/foos-tourney/issues) for
+discussion and resolution.

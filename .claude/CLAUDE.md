@@ -75,8 +75,8 @@ when the module's flow changes.
 
 These match the README's Tournaments, Admin lock and Club leaderboard sections. Keep both in sync.
 
-Open bugs are listed in the README's **Known issues** table, one GitHub issue each. When you fix one, add a
-regression test, close the issue in the commit message (`Fixes #N`), and remove its row.
+Open bugs are tracked as GitHub issues (https://github.com/DT209/foos-tourney/issues); the README links
+there. When you fix one, add a regression test and close the issue in the commit message (`Fixes #N`).
 
 - Tournaments are saved in one browser's `localStorage` only, not shared across devices or
   organizers. Private browsing or blocked site data disables saving, and the footer says so.
