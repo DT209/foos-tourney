@@ -28,9 +28,11 @@ describe('phone menu', () => {
     assert.equal(await app.page.$(menu), null, 'the ✕ closes it');
 
     await app.click('☰');
-    await app.click('CSV Export', { within: menu });
-    assert.equal(app.dialogs.at(-1), 'No completed match data available to export yet.');
+    assert.equal(await app.page.$$eval(`${menu} button`, bs => bs.some(b => /CSV Export/.test(b.textContent))), false);
+    await app.click('Display Mode', { within: menu });
+    assert.ok(await app.page.$('[data-testid="display-board"]'));
     assert.equal(await app.page.$(menu), null, 'menu closes after an action');
+    await app.click('Exit Display');
 
     await app.addAllLeaderboardPlayers();
     await app.click('☰');

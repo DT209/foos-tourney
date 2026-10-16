@@ -33,9 +33,7 @@ async function exportedTournament() {
   await app.addAllLeaderboardPlayers();
   await app.playMonsterMatch();
   const id = await currentId();
-  await app.click('Saved Tournaments');
-  const file = await app.captureDownload('Export', { within: `[data-tournament-id="${id}"]` });
-  await app.click('Close', { within: SAVED });
+  const file = await app.exportFromSaved('JSON', id);
   return { id, file, roster: await app.rosterCount() };
 }
 
@@ -65,8 +63,7 @@ describe('export', () => {
     const olderId = await currentId();
     await app.click('New Tournament');
     await app.click('Start New Tournament');
-    await app.click('Saved Tournaments');
-    const file = await app.captureDownload('Export', { within: `[data-tournament-id="${olderId}"]` });
+    const file = await app.exportFromSaved('JSON', olderId);
     assert.equal(JSON.parse(file.text).tournament.tournamentName, 'Older');
   });
 });
@@ -222,7 +219,9 @@ describe('read-only view', () => {
     await assert.rejects(app.click('Draw New Match'), /No visible, enabled button/);
     await assert.rejects(app.click('Admin Lock'), /No visible, enabled button/);
     await assert.rejects(app.click('Saved Tournaments'), /No visible, enabled button/);
-    await app.click('CSV Export'); // exporting results still works
+    await app.click('Display Mode'); // a read-only file can go on a TV
+    assert.ok(await app.page.$('[data-testid="display-board"]'));
+    await app.click('Exit Display');
     assert.deepEqual((await app.storageKeys()).sort(), keysBefore, 'nothing written to storage');
     assert.equal((await recordIds()).includes(id), false);
 

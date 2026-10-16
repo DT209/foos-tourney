@@ -126,14 +126,35 @@ async function openApp({
     });
   }
 
+  const extraPages = [];
   const app = {
     page,
     url,
     errors: [],
     dialogs: [],
     pause,
+    // Opens another page in the same browser (sharing localStorage), e.g. a
+    // ?display window. Its coverage and page errors count like the main page's.
+    async openPage(search = '') {
+      const extra = await browser.newPage();
+      await extra.setViewport(viewport);
+      if (collectCoverage) await extra.coverage.startJSCoverage(COVERAGE_OPTIONS);
+      extra.on('pageerror', e => app.errors.push(e.message));
+      extraPages.push(extra);
+      await extra.goto(`${url}${search}`, { waitUntil: 'networkidle0' });
+      return extra;
+    },
+    // Saves a page's coverage so far, before it navigates (navigation drops it).
+    async flushCoverage(target = page) {
+      if (!collectCoverage) return;
+      await saveUiCoverage(target);
+      await target.coverage.startJSCoverage(COVERAGE_OPTIONS);
+    },
     async close() {
-      if (collectCoverage) await saveUiCoverage(page).catch(() => {});
+      if (collectCoverage) {
+        for (const extra of extraPages) await saveUiCoverage(extra).catch(() => {});
+        await saveUiCoverage(page).catch(() => {});
+      }
       await browser.close();
       await new Promise(resolve => server.close(resolve));
     },
@@ -275,8 +296,27 @@ async function openApp({
         text: decodeURIComponent(download.href.slice(comma + 1))
       };
     },
+    currentTournamentId() {
+      return page.evaluate(() => localStorage.getItem('foosTourney.currentTournament'));
+    },
+    // Opens Saved Tournaments and the Export options on a tournament's row
+    // (the current one by default). Returns the row selector.
+    async openExportOptions(id) {
+      const tournamentId = id || (await this.currentTournamentId());
+      const row = `[data-tournament-id="${tournamentId}"]`;
+      if (!(await page.$('[data-testid="saved-tournaments"]'))) await this.click('Saved Tournaments');
+      await this.click('Export', { within: row });
+      return row;
+    },
+    // Exports a saved tournament (default: current) as 'CSV' or 'JSON'.
+    async exportFromSaved(format, id) {
+      const row = await this.openExportOptions(id);
+      const file = await this.captureDownload(format, { within: row });
+      await this.click('Close', { within: '[data-testid="saved-tournaments"]' });
+      return file;
+    },
     async exportCsv() {
-      const { name, text } = await this.captureDownload('CSV Export');
+      const { name, text } = await this.exportFromSaved('CSV');
       return { name, csv: text };
     },
     // Writes `text` to a temp file and picks it in the import dialog's file input.

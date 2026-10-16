@@ -51,6 +51,47 @@
       }
     }
   </script>
+  <!-- Display Mode: every size is relative. The board's font size follows the
+       viewport, and everything inside is in em, so TVs and phones both fit. -->
+  <style>
+    .db { font-size: clamp(14px, calc(0.9vw + 0.9vh), 64px); height: 100vh; height: 100dvh; display: flex; flex-direction: column; gap: 0.6em; padding: 0.8em; box-sizing: border-box; overflow: hidden; background: #0e1015; color: #f3f4f6; }
+    .db-head { display: flex; align-items: center; justify-content: space-between; gap: 0.6em; flex-wrap: wrap; }
+    .db-title { font-size: 1.6em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.1; }
+    .db-sub { font-size: 0.7em; color: #9ca3af; }
+    .db-actions { display: flex; gap: 0.4em; }
+    .db-btn { font-size: 0.65em; padding: 0.5em 0.9em; border-radius: 0.4em; border: 0.08em solid #2e3543; background: #181b22; color: #e5e7eb; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
+    .db-btn:hover { border-color: #d12328; }
+    .db-grid { flex: 1; min-height: 0; display: grid; gap: 0.6em; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; grid-template-areas: "tables standings" "tables history"; }
+    .db-panel { min-height: 0; display: flex; flex-direction: column; background: #181b22; border: 0.08em solid #2e3543; border-radius: 0.6em; padding: 0.6em; }
+    .db-panel h2 { font-size: 0.85em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: #d12328; margin: 0 0 0.4em; }
+    .db-tables { grid-area: tables; } .db-standings { grid-area: standings; } .db-history { grid-area: history; }
+    .db-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+    .db-scroll::-webkit-scrollbar { display: none; }
+    .db-table-grid { display: grid; gap: 0.5em; grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); }
+    .db-table { border: 0.12em solid #2e3543; border-radius: 0.5em; padding: 0.5em 0.6em; background: #0e1015; }
+    .db-table[data-live="true"] { border-color: #7c3aed; }
+    .db-table-head { display: flex; justify-content: space-between; font-size: 0.7em; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; }
+    .db-team { font-size: 1em; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+    .db-vs { font-size: 0.65em; color: #d12328; font-weight: 900; margin: 0.15em 0; }
+    .db-wins { float: right; font-size: 1em; font-weight: 900; color: #34d399; }
+    .db-games { font-size: 0.7em; color: #d1d5db; margin-top: 0.3em; font-family: ui-monospace, monospace; }
+    .db-free { font-size: 0.9em; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.6em 0; }
+    .db-row { display: grid; grid-template-columns: 2em 1fr auto auto; gap: 0.5em; align-items: baseline; font-size: 0.8em; padding: 0.3em 0.2em; border-bottom: 0.06em solid #2e3543; }
+    .db-row .db-rank { color: #9ca3af; font-weight: 800; }
+    .db-row .db-name { font-weight: 700; overflow-wrap: anywhere; }
+    .db-row .db-muted { color: #9ca3af; font-family: ui-monospace, monospace; }
+    .db-paused { opacity: 0.55; }
+    .db-match { font-size: 0.75em; padding: 0.35em 0.2em; border-bottom: 0.06em solid #2e3543; }
+    .db-match .db-stage { color: #9ca3af; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; }
+    .db-match .db-winner { color: #34d399; font-weight: 800; }
+    .db-empty { font-size: 0.75em; color: #6b7280; font-style: italic; }
+    @media (orientation: portrait), (max-width: 48em) {
+      .db { height: auto; min-height: 100vh; overflow: visible; }
+      .db-grid { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "tables" "standings" "history"; }
+      .db-panel { max-height: 70vh; }
+      .db-tables { max-height: none; }
+    }
+  </style>
 </head>
 <body class="bg-cfc-dark text-cfc-text min-h-screen font-sans selection:bg-cfc-red selection:text-white flex flex-col justify-between">
   <div id="root" class="w-full min-h-screen flex flex-col justify-between"></div>
@@ -64,7 +105,7 @@
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
       sanitizeTypedText, submitPin, forgetPin, getLeaderboardInfo,
-      createTournamentId, newTournamentState, restoreTournamentState, tournamentDate,
+      createTournamentId, newTournamentState, restoreTournamentState,
       saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, tournamentExists, recentTournamentPlayers, withRecentPlayers, getBrowserStorage,
       serializeTournamentExport, tournamentExportFileName, parseTournamentExport, storeImportedTournament, downloadText,
       fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
@@ -77,7 +118,8 @@
       createBracket, clearMatchResults,
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
-      getCompletedMatchesList, formatHistoryRow, buildCsv, csvFileName, downloadCsv
+      getCompletedMatchesList, formatHistoryRow, tournamentCsv,
+      buildDisplayBoard, initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl
     } = window.TournamentLogic;
 
     // e.g. "Fri, Oct 16, 11:40 PM" in the viewer's local time.
@@ -201,6 +243,102 @@
     }
 
     // ==========================================
+    // DISPLAY MODE (TVs and phones)
+    // ==========================================
+
+    // A panel that scrolls itself when its content is taller than the panel
+    // (nextAutoScroll decides each step). Reduced-motion users scroll manually.
+    function AutoScroll({ children }) {
+      const ref = useRef(null);
+      useEffect(() => {
+        if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return undefined;
+        let state = initialAutoScroll();
+        const timer = setInterval(() => {
+          const el = ref.current;
+          state = nextAutoScroll(el, state);
+          el.scrollTop = state.scrollTop;
+        }, 50);
+        return () => clearInterval(timer);
+      }, []);
+      return <div ref={ref} data-testid="auto-scroll" className="db-scroll">{children}</div>;
+    }
+
+    function DisplayBoard({ board, title, started, onExit, onOpenWindow }) {
+      return (
+        <div data-testid="display-board" className="db">
+          <div className="db-head">
+            <div>
+              <div className="db-title">{title}</div>
+              <div className="db-sub">Started {started}</div>
+            </div>
+            <div className="db-actions">
+              {onOpenWindow && <button className="db-btn" onClick={onOpenWindow}>Open on Another Screen</button>}
+              <button className="db-btn" onClick={onExit}>Exit Display</button>
+            </div>
+          </div>
+          <div className="db-grid">
+            <section data-testid="display-tables" className="db-panel db-tables">
+              <h2>Tables</h2>
+              <AutoScroll>
+                <div className="db-table-grid">
+                  {board.tables.map(t => (
+                    <div key={t.table} data-testid="display-table" data-table={t.table} data-live={String(t.live)} className="db-table">
+                      <div className="db-table-head">
+                        <span>Table {t.table}</span>
+                        <span>{t.live ? t.label : ''}</span>
+                      </div>
+                      {t.live ? (
+                        <React.Fragment>
+                          <div className="db-team"><span className="db-wins">{t.wins[0]}</span>{t.team1}</div>
+                          <div className="db-vs">vs</div>
+                          <div className="db-team"><span className="db-wins">{t.wins[1]}</span>{t.team2}</div>
+                          {t.games.length > 0 && (
+                            <div className="db-games">
+                              {t.games.map((g, i) => <span key={i}>G{i + 1} {g.t1 === '' ? '-' : g.t1} : {g.t2 === '' ? '-' : g.t2}{i < t.games.length - 1 ? ' · ' : ''}</span>)}
+                            </div>
+                          )}
+                        </React.Fragment>
+                      ) : (
+                        <div className="db-free">Free</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </AutoScroll>
+            </section>
+            <section data-testid="display-standings" className="db-panel db-standings">
+              <h2>Leaderboard</h2>
+              <AutoScroll>
+                {board.standings.length === 0 && <div className="db-empty">No players yet.</div>}
+                {board.standings.map(p => (
+                  <div key={p.name} data-testid="display-standing-row" className={`db-row ${p.active ? '' : 'db-paused'}`}>
+                    <span className="db-rank">{p.rank}</span>
+                    <span className="db-name">{p.name}</span>
+                    <span className="db-muted">{p.wins}-{p.losses}</span>
+                    <span className="db-muted">{p.winPct}%</span>
+                  </div>
+                ))}
+              </AutoScroll>
+            </section>
+            <section data-testid="display-history" className="db-panel db-history">
+              <h2>Match History</h2>
+              <AutoScroll>
+                {board.history.length === 0 && <div className="db-empty">No completed matches yet.</div>}
+                {board.history.map(m => (
+                  <div key={m.id} data-testid="display-history-row" className="db-match">
+                    <div className="db-stage">{m.stage}</div>
+                    <div><span className="db-winner">{m.winTeamStr}</span> def. {m.loseTeamStr}</div>
+                    <div className="db-muted">{m.games.map(g => `${g.winScore}-${g.loseScore}`).join(' · ')}</div>
+                  </div>
+                ))}
+              </AutoScroll>
+            </section>
+          </div>
+        </div>
+      );
+    }
+
+    // ==========================================
     // MAIN REACT APPLICATION
     // ==========================================
 
@@ -211,6 +349,11 @@
         restoreTournamentState(loadCurrentTournament(storage), { id: createTournamentId(), now: new Date() })
       );
       const [isSaved, setIsSaved] = useState(true);
+      // ?display opens a display-only window (e.g. on a TV): it follows the
+      // control desk through storage events and never saves.
+      const [isDisplayWindow] = useState(() => isDisplayModeUrl(window.location.search));
+      const [displayMode, setDisplayMode] = useState(isDisplayWindow);
+      const [exportMenuId, setExportMenuId] = useState(null);
 
       // Tournament identity: a UUID, not a date - events often run past midnight.
       const [tournamentId, setTournamentId] = useState(restored.tournamentId);
@@ -303,11 +446,22 @@
 
       // --- AUTO-SAVE (paused while viewing a file read-only) ---
       useEffect(() => {
-        if (readOnlyView) return;
+        if (readOnlyView || isDisplayWindow) return;
         setIsSaved(saveTournament(storage, currentTournamentState()));
-      }, [storage, readOnlyView, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
+      }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
           teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin]);
+
+      // --- DISPLAY WINDOW: follow the control desk's saves in other tabs/windows ---
+      useEffect(() => {
+        if (!isDisplayWindow) return undefined;
+        const onStorage = () => {
+          const saved = loadCurrentTournament(storage);
+          if (saved) applyTournament(restoreTournamentState(saved, { id: createTournamentId(), now: new Date() }));
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+      });
 
       // --- ADMIN LOCK / VIEW ONLY TOGGLE ---
       const applyLockState = ({ pin, isLocked: locked }) => {
@@ -479,13 +633,24 @@
       };
 
       // --- EXPORT / IMPORT ---
-      const exportTournament = (id) => {
+      // format: 'csv' (match results) or 'json' (the full tournament).
+      const exportTournament = (id, format) => {
+        setExportMenuId(null);
         const state = id === tournamentId ? currentTournamentState() : loadTournament(storage, id);
         if (!state) {
           alert('That tournament could not be loaded.');
           return;
         }
-        downloadText(serializeTournamentExport(state), tournamentExportFileName(state), 'application/json');
+        if (format === 'json') {
+          downloadText(serializeTournamentExport(state), tournamentExportFileName(state), 'application/json');
+          return;
+        }
+        const csv = tournamentCsv(state);
+        if (!csv) {
+          alert("No completed match data available to export yet.");
+          return;
+        }
+        downloadText(csv.text, csv.fileName, 'text/csv');
       };
 
       const handleImportFile = (e) => {
@@ -534,17 +699,7 @@
       };
 
       const completedMatchesList = getCompletedMatchesList(matches, bracketData, tournamentId);
-      const startDate = tournamentDate(startedAt);
 
-      // --- EXPORT TO EXCEL (CSV) ---
-      const exportToCSV = () => {
-        const csv = buildCsv(completedMatchesList, startDate);
-        if (!csv) {
-          alert("No completed match data available to export yet.");
-          return;
-        }
-        downloadCsv(csv, csvFileName(tournamentName, startDate));
-      };
 
       // --- MATCH DRAWING & DELETION ---
       const handleDrawMatch = () => {
@@ -657,6 +812,24 @@
       // Assign tables dynamically to ready/active matches without reassigning established tables
       const bracketReadyMatches = assignBracketTables(bracketData, tableCount);
 
+      if (displayMode) {
+        return (
+          <DisplayBoard
+            board={buildDisplayBoard({
+              matches,
+              bracketAssignments: bracketReadyMatches,
+              tableCount,
+              players,
+              completedMatches: completedMatchesList
+            })}
+            title={tournamentName}
+            started={formatStartedAt(startedAt)}
+            onExit={() => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false))}
+            onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href), '_blank')}
+          />
+        );
+      }
+
       return (
         <div className="flex flex-col min-h-screen">
           
@@ -697,11 +870,11 @@
               {/* Action Buttons */}
               <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0 whitespace-nowrap">
                 <button 
-                  onClick={exportToCSV}
-                  className="bg-green-200 hover:bg-green-300 text-green-800 font-bold px-3 py-2 text-xs uppercase tracking-wider rounded border border-green-600 flex items-center gap-1.5 transition"
-                  title="Export match results to Excel CSV"
+                  onClick={() => setDisplayMode(true)}
+                  className="bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-3 py-2 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center gap-1.5 transition"
+                  title="Show tables, leaderboard and history for TVs and phones"
                 >
-                  <span>📊</span> CSV Export
+                  <span>📺</span> Display Mode
                 </button>
 
                 <button
@@ -747,10 +920,10 @@
 
                   <div className="flex flex-col gap-3">
                     <button 
-                      onClick={() => { exportToCSV(); setIsMobileMenuOpen(false); }}
-                      className="w-full bg-green-200 hover:bg-green-300 text-green-800 font-bold px-4 py-3 text-xs uppercase tracking-wider rounded border border-green-600 flex items-center justify-center gap-2 transition"
+                      onClick={() => { setDisplayMode(true); setIsMobileMenuOpen(false); }}
+                      className="w-full bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-4 py-3 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center justify-center gap-2 transition"
                     >
-                      <span>📊</span> CSV Export
+                      <span>📺</span> Display Mode
                     </button>
 
                     <button
@@ -1097,25 +1270,46 @@
                           </div>
                         </div>
                         <div className="flex gap-2 flex-shrink-0 items-center">
-                          <button
-                            onClick={() => exportTournament(t.id)}
-                            className="bg-cfc-panelLight hover:bg-gray-700 border border-cfc-border text-gray-200 text-xs px-2.5 py-1 rounded"
-                          >
-                            Export
-                          </button>
+                          {exportMenuId === t.id ? (
+                            <React.Fragment>
+                              <button
+                                onClick={() => exportTournament(t.id, 'csv')}
+                                title="Match results for spreadsheets"
+                                className="bg-green-200 hover:bg-green-300 text-green-900 text-xs px-2.5 py-1 rounded font-semibold"
+                              >
+                                CSV
+                              </button>
+                              <button
+                                onClick={() => exportTournament(t.id, 'json')}
+                                title="The full tournament, for importing"
+                                className="bg-sky-200 hover:bg-sky-300 text-sky-900 text-xs px-2.5 py-1 rounded font-semibold"
+                              >
+                                JSON
+                              </button>
+                            </React.Fragment>
+                          ) : (
+                            <button
+                              onClick={() => setExportMenuId(t.id)}
+                              className="bg-cfc-panelLight hover:bg-gray-700 border border-cfc-border text-gray-200 text-xs px-2.5 py-1 rounded"
+                            >
+                              Export
+                            </button>
+                          )}
                         {t.id === tournamentId ? (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-700 rounded px-2 py-0.5">Current</span>
                         ) : (
                           <React.Fragment>
                             <button
                               onClick={() => openTournament(t.id)}
-                              className="bg-cfc-red hover:bg-cfc-redHover text-white text-xs px-2.5 py-1 rounded font-semibold"
+                              disabled={isLocked}
+                              className="bg-cfc-red hover:bg-cfc-redHover text-white text-xs px-2.5 py-1 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               Open
                             </button>
                             <button
                               onClick={() => handleDeleteTournament(t)}
-                              className="bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 text-xs px-2.5 py-1 rounded"
+                              disabled={isLocked}
+                              className="bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 text-xs px-2.5 py-1 rounded disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               Delete
                             </button>
@@ -1128,7 +1322,8 @@
                   <div className="p-3 border-t border-cfc-border flex gap-2">
                     <button
                       onClick={() => setImportState({ step: 'source' })}
-                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold"
+                      disabled={isLocked}
+                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Import…
                     </button>
@@ -1536,7 +1731,7 @@
                       </div>
                       <button
                         onClick={openSavedTournaments}
-                        disabled={editingLocked}
+                        disabled={readOnlyView !== null}
                         className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Saved Tournaments

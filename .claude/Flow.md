@@ -219,6 +219,28 @@ flowchart TD
 Renames go through `renamePlayer`, which returns `{ error }` for a name another player already has,
 so the roster never holds two players with the same name (case-insensitive).
 
+## 8. Display Mode
+
+```mermaid
+flowchart TD
+    BTN["Display Mode button: setDisplayMode(true)"] --> RENDER
+    URL["Page opened with ?display: isDisplayModeUrl"] --> DW["isDisplayWindow: auto-save skipped"]
+    DW --> RENDER["FoosballApp returns DisplayBoard early"]
+    RENDER --> BB["buildDisplayBoard(matches, assignBracketTables result, tableCount, players, completed matches)"]
+    BB --> T["tables: live Monster match first, else bracket assignment, else Free"]
+    BB --> S["standings: computeStandings ranks"]
+    BB --> H["history: getCompletedMatchesList, newest first, formatHistoryRow"]
+    T --> AS["AutoScroll panels: nextAutoScroll every 50 ms"]
+    S --> AS
+    H --> AS
+    DW --> SE["storage event: loadCurrentTournament, restoreTournamentState, applyTournament"]
+    SE --> RENDER
+```
+
+`nextAutoScroll` cycles top pause, scroll, bottom pause, back to top. The step is 0.4% of the panel's
+height per tick, so speed scales with the screen. Content that fits never moves, and
+`prefers-reduced-motion` disables the timer.
+
 ## Module sections and main functions
 
 | Section in `tournament-logic.js` | Main functions                                                                                                                                                                   |
@@ -227,6 +249,7 @@ so the roster never holds two players with the same name (case-insensitive).
 | Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                         |
 | Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament` |
 | Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                             |
+| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`                                              |
 | Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                  |
 | Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                    |
 | Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                     |

@@ -1929,6 +1929,120 @@ globalThis.TournamentLogic = (() => {
     downloadText(csvText, fileName, 'text/csv', doc);
   }
 
+  // ==========================================
+  // DISPLAY MODE (TVs and phones)
+  // ==========================================
+  // A view-only board: every table with who is on it, the leaderboard and
+  // match history. Panels auto-scroll when their content doesn't fit.
+
+  function scoredGames(games) {
+    return games.filter(g => g.t1 !== '' || g.t2 !== '').map(g => ({ t1: g.t1, t2: g.t2 }));
+  }
+
+  function gameWins(games) {
+    const wins = [0, 0];
+    games.forEach(g => {
+      const s1 = parseInt(g.t1, 10);
+      const s2 = parseInt(g.t2, 10);
+      if (isNaN(s1) || isNaN(s2) || s1 === s2) return;
+      wins[s1 > s2 ? 0 : 1]++;
+    });
+    return wins;
+  }
+
+  // tables: one entry per table (a live Monster match takes precedence over a
+  // bracket assignment); standings: ranked like computeStandings; history:
+  // completed matches, most recent first.
+  function buildDisplayBoard({ matches, bracketAssignments, tableCount, players, completedMatches }) {
+    const tables = Array.from({ length: tableCount }, (_, i) => {
+      const table = i + 1;
+      const monster = findLiveMatchAtTable(matches, table);
+      if (monster) {
+        return {
+          table,
+          live: true,
+          stage: 'Monster',
+          label: 'Monster match',
+          team1: teamLabel(monster.team1),
+          team2: teamLabel(monster.team2),
+          games: scoredGames(monster.games),
+          wins: gameWins(monster.games)
+        };
+      }
+      const assigned = bracketAssignments[i];
+      if (!assigned) return { table, live: false };
+      const { match } = assigned;
+      return {
+        table,
+        live: true,
+        stage: 'Playoffs',
+        label: match.label,
+        team1: bracketTeamName(match.team1),
+        team2: bracketTeamName(match.team2),
+        games: scoredGames(match.games),
+        wins: gameWins(match.games)
+      };
+    });
+    const standings = computeStandings(players).map((p, i) => ({
+      rank: i + 1,
+      name: p.name,
+      wins: p.wins,
+      losses: p.losses,
+      winPct: p.winPct,
+      avgDiff: p.avgDiff,
+      active: p.active
+    }));
+    const history = [...completedMatches]
+      .reverse()
+      .map(m => ({ id: m.uniqueId, stage: m.stage, ...formatHistoryRow(m) }));
+    return { tables, standings, history };
+  }
+
+  // Auto-scroll state machine, one step per timer tick: pause at the top,
+  // scroll by a step relative to the panel height, pause at the bottom, jump
+  // back to the top. Content that fits stays put.
+  function initialAutoScroll({ pauseTicks = 40 } = {}) {
+    return { phase: 'top', pause: pauseTicks };
+  }
+
+  function nextAutoScroll({ scrollTop, scrollHeight, clientHeight }, state, { pauseTicks = 40, speed = 0.004 } = {}) {
+    const overflow = scrollHeight - clientHeight;
+    if (overflow <= 1) return { scrollTop: 0, phase: 'top', pause: pauseTicks };
+    if (state.pause > 0) return { scrollTop, phase: state.phase, pause: state.pause - 1 };
+    if (state.phase === 'top') return { scrollTop, phase: 'scroll', pause: 0 };
+    if (state.phase === 'bottom') return { scrollTop: 0, phase: 'top', pause: pauseTicks };
+    const next = Math.min(scrollTop + Math.max(1, Math.round(clientHeight * speed)), overflow);
+    return next >= overflow
+      ? { scrollTop: overflow, phase: 'bottom', pause: pauseTicks }
+      : { scrollTop: next, phase: 'scroll', pause: 0 };
+  }
+
+  // ?display (any value but 0) opens the page as a display-only window.
+  function isDisplayModeUrl(search) {
+    const params = new URLSearchParams(search);
+    return params.has('display') && params.get('display') !== '0';
+  }
+
+  function displayModeUrl(href) {
+    const url = new URL(href);
+    url.searchParams.set('display', '1');
+    return url.toString();
+  }
+
+  function controlDeskUrl(href) {
+    const url = new URL(href);
+    url.searchParams.delete('display');
+    return url.toString();
+  }
+
+  // Results CSV for any tournament state (current or saved), or null when it
+  // has no completed matches.
+  function tournamentCsv(state) {
+    const date = tournamentDate(state.startedAt);
+    const text = buildCsv(getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId), date);
+    return text === null ? null : { text, fileName: csvFileName(state.tournamentName, date) };
+  }
+
   return {
     // sanitization & admin
     sanitizeInput,
@@ -2034,6 +2148,14 @@ globalThis.TournamentLogic = (() => {
     buildCsv,
     csvFileName,
     downloadText,
-    downloadCsv
+    downloadCsv,
+    tournamentCsv,
+    // display mode
+    buildDisplayBoard,
+    initialAutoScroll,
+    nextAutoScroll,
+    isDisplayModeUrl,
+    displayModeUrl,
+    controlDeskUrl
   };
 })();

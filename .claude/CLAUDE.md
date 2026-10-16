@@ -66,6 +66,12 @@ when the module's flow changes.
 - Imports never switch the current tournament (`storeImportedTournament` writes the record only). The
   read-only view swaps the on-screen state, pauses auto-save, and restores the previous state on Close
   View.
+- Display Mode renders `DisplayBoard` from `buildDisplayBoard`. A window opened with `?display`
+  (`isDisplayModeUrl`) must never save: the auto-save effect skips it, and it reloads the current
+  tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
+  timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only
+  relative units (`em`, `vw`/`vh`); px appears only as the font-size floor and ceiling in `clamp()`.
+  Keep them relative.
 - Downloads go through `downloadText`, which percent-encodes the whole payload. `encodeURI` leaves `#`,
   which truncates `data:` URLs.
 - Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams

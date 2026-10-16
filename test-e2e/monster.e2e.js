@@ -131,7 +131,8 @@ describe('clearing and export', () => {
 
   it('CSV export says when there is nothing to export', async () => {
     app = await openApp();
-    await app.click('CSV Export');
+    const row = await app.openExportOptions();
+    await app.click('CSV', { within: row });
     assert.equal(app.dialogs.at(-1), 'No completed match data available to export yet.');
   });
 

@@ -125,12 +125,29 @@ describe('saved tournaments', () => {
     );
   });
 
-  it('the lock disables New Tournament and Saved Tournaments', async () => {
+  it('while locked, Saved Tournaments only allows exporting', async () => {
     app = await openApp();
+    await app.addAllLeaderboardPlayers();
+    await app.playMonsterMatch();
+    const firstId = await currentId();
+    await app.click('New Tournament');
+    await app.click('Start New Tournament');
     await app.click('Admin Lock');
     await app.submitPin('2468');
     await assert.rejects(app.click('New Tournament'), /No visible, enabled button/);
-    await assert.rejects(app.click('Saved Tournaments'), /No visible, enabled button/);
+
+    await app.click('Saved Tournaments');
+    const row = `[data-tournament-id="${firstId}"]`;
+    await assert.rejects(app.click('Open', { within: row }), /No visible, enabled button/);
+    await assert.rejects(app.click('Delete', { within: row }), /No visible, enabled button/);
+    await assert.rejects(
+      app.click('Import', { within: '[data-testid="saved-tournaments"]' }),
+      /No visible, enabled button/
+    );
+    await app.click('Export', { within: row });
+    const csv = await app.captureDownload('CSV', { within: row });
+    assert.equal(csv.mimeType, 'text/csv');
+    assert.equal(csv.text.split('\n').length, 3, 'header + two scored games');
   });
 });
 

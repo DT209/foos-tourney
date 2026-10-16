@@ -22,7 +22,7 @@ mindmap
       Draw New Match with fair matchmaking
       Free table assigned
       Game scores and handicap
-      Match history and CSV Export
+      Match history
     Brackets
       Single, double or championship
       Team formation and seeding
@@ -32,7 +32,11 @@ mindmap
       Auto-save per tournament
       New Tournament
       Saved Tournaments
-      Export, Import, read-only view
+      Export as CSV or JSON, Import, read-only view
+    Display Mode
+      Tables, leaderboard and history for TVs and phones
+      Panels scroll by themselves
+      Second screen window that follows live play
     Admin Lock
       PIN guards against accidental edits
 ```
@@ -50,7 +54,8 @@ flowchart TD
     F -- Yes --> G["Draw Brackets"]
     G --> H["Play bracket matches, then Confirm"]
     H --> I["Standings"]
-    I --> J["CSV Export and Saved Tournaments Export"]
+    I --> J["Saved Tournaments: Export as CSV or JSON"]
+    D -.-> TV["Display Mode on a TV or phone throughout"]
 ```
 
 ## Playing a bracket
@@ -146,8 +151,12 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 
 ## Exporting and importing tournaments
 
-- **Export** on any row in **Saved Tournaments** downloads that tournament (roster, matches, bracket,
-  settings) as a `.json` file: `{ format: "foos-tourney", version: 1, exportedAt, tournament }`.
+- **Export** on any row in **Saved Tournaments** offers two formats for that tournament:
+  - **CSV**: match results, one row per scored game, for spreadsheets.
+  - **JSON**: the full tournament (roster, matches, bracket, settings) for importing:
+    `{ format: "foos-tourney", version: 1, exportedAt, tournament }`.
+- While the admin lock is on, Saved Tournaments still opens so results can be exported. Open, Delete,
+  Import and New Tournament stay disabled.
 - **Import…** in Saved Tournaments loads an export **from a file** and shows what it contains, then:
   - **Add to Saved Tournaments** adds it without switching to it. If the same tournament is already
     saved, choose **Replace Saved Copy** or **Keep Both** (the copy gets a new id and "(copy)" in its
@@ -177,6 +186,33 @@ flowchart TD
     EX -- Yes --> RP["Replace Saved Copy or Keep Both"]
     REV --> RO["View Read-only: nothing is saved"]
     RO --> CV["Close View returns to your tournament"]
+```
+
+## Display Mode
+
+**📺 Display Mode** (upper right, or the phone menu) shows a view-only board for TVs and phones:
+
+- **Tables:** every table, who is on it, the stage (Monster match or bracket match label), games won
+  and the current game scores. Free tables say so.
+- **Leaderboard:** the Monster standings.
+- **Match history:** most recent first.
+
+Panels scroll by themselves when their content doesn't fit, pausing at the top and bottom. Devices set
+to reduce motion scroll manually instead. All sizes are relative to the screen: landscape screens show
+the tables beside the leaderboard and history, portrait screens stack them. It works while locked and
+in the read-only view.
+
+**Open on Another Screen** opens the board in a new window (`TournamentManager.html?display=1`) that
+can be moved to a TV. It updates as you score on the control desk and never saves anything. It only
+follows tournaments on the same computer. **Exit Display** returns to the control desk.
+
+```mermaid
+flowchart LR
+    DESK["Control desk: score matches"] -->|"auto-save"| LS[("Browser storage")]
+    LS -->|"storage event"| WIN["?display window on a TV"]
+    DESK -->|"Display Mode"| BOARD["Board in the same tab"]
+    BOARD -->|"Open on Another Screen"| WIN
+    WIN -->|"Exit Display"| DESK2["Control desk in that window"]
 ```
 
 ## Admin lock
