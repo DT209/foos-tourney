@@ -2034,6 +2034,7 @@ globalThis.TournamentLogic = (() => {
   function controlDeskUrl(href) {
     const url = new URL(href);
     url.searchParams.delete('display');
+    url.searchParams.delete('remote');
     return url.toString();
   }
 
@@ -2364,6 +2365,72 @@ globalThis.TournamentLogic = (() => {
     }
   }
 
+  // The Display Mode board for any tournament state (the open one, or one
+  // read from Firebase).
+  function boardForTournament(state) {
+    return buildDisplayBoard({
+      matches: state.matches,
+      bracketAssignments: assignBracketTables(state.bracketData, state.tableCount),
+      tableCount: state.tableCount,
+      players: state.players,
+      completedMatches: getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId)
+    });
+  }
+
+  // What the page does with startPublishing's result:
+  // { record, status } once published, { prompt } to ask about replacing,
+  // or { status } when every slot is in use.
+  function publishStartOutcome(result, { tournamentId, code }) {
+    if (result.action === 'published') {
+      return { record: { tournamentId, slot: result.slot, code }, status: { kind: 'live' } };
+    }
+    if (result.action === 'ask-replace') return { prompt: result };
+    return { status: { kind: 'full', nextFreeAt: result.nextFreeAt, tournamentId } };
+  }
+
+  // What the page does with takeOver's result: { error }, { askRelease: name },
+  // or { tournament, record } to open and keep publishing.
+  function takeOverOutcome(result, { id, code }) {
+    if (result.error) return { error: result.error };
+    if (result.action === 'ask-release') return { askRelease: result.name };
+    const parsed = parseTournamentExport(result.exportText);
+    if (parsed.error) return { error: parsed.error };
+    return { tournament: parsed.tournament, record: { tournamentId: id, slot: result.slot, code } };
+  }
+
+  // A tournament read from Firebase (or null once it is removed):
+  // { tournament }, { gone: true } or { error }.
+  function parsePublishedTournament(remote) {
+    if (!remote) return { gone: true };
+    return parseTournamentExport(remote.exportText);
+  }
+
+  // Status after a published change: live, or moved when another browser
+  // took over (the rules refused the write).
+  function publishResultStatus(result) {
+    return result.error ? { kind: 'moved' } : { kind: 'live' };
+  }
+
+  // With every slot in use, the next watched change after the next free time
+  // tries again.
+  function shouldRetryPublishing(status, tournamentId, now) {
+    return (
+      status !== null && status.kind === 'full' && status.tournamentId === tournamentId && now >= status.nextFreeAt
+    );
+  }
+
+  // What Display Mode opens on: a ?remote=<id> tournament, the list when
+  // publishing is set up, or this device's tournament.
+  function initialDisplaySource(remoteId, remoteEnabled) {
+    if (remoteId) return { source: 'remote', id: remoteId };
+    return remoteEnabled ? null : { source: 'local' };
+  }
+
+  function savedTournamentName(storage, id) {
+    const saved = loadTournament(storage, id);
+    return saved ? saved.tournamentName : '';
+  }
+
   function remoteTournamentUrl(href, id) {
     const url = new URL(href);
     url.searchParams.delete('display');
@@ -2529,6 +2596,14 @@ globalThis.TournamentLogic = (() => {
     loadPublishing,
     savePublishing,
     remoteTournamentUrl,
-    remoteIdFromSearch
+    remoteIdFromSearch,
+    boardForTournament,
+    publishStartOutcome,
+    takeOverOutcome,
+    parsePublishedTournament,
+    publishResultStatus,
+    shouldRetryPublishing,
+    initialDisplaySource,
+    savedTournamentName
   };
 })();

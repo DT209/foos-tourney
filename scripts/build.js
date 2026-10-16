@@ -11,7 +11,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
-const APP_FILES = ['TournamentManager.html', 'tournament-logic.js'];
+const APP_FILES = ['TournamentManager.html', 'tournament-logic.js', 'firebase-config.js', 'firebase-remote.js'];
 const args = new Set(process.argv.slice(2));
 
 function run(cmd, cmdArgs) {

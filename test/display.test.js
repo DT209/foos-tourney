@@ -195,5 +195,9 @@ describe('display mode URL', () => {
       L.controlDeskUrl('https://x.org/dyp/TournamentManager.html?a=1&display=1'),
       'https://x.org/dyp/TournamentManager.html?a=1'
     );
+    assert.equal(
+      L.controlDeskUrl('https://x.org/dyp/TournamentManager.html?remote=abc'),
+      'https://x.org/dyp/TournamentManager.html'
+    );
   });
 });

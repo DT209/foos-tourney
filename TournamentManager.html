@@ -94,6 +94,12 @@
     .db-match .db-stage { color: #9ca3af; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; }
     .db-match .db-winner { color: #34d399; font-weight: 800; }
     .db-empty { font-size: 0.75em; color: #6b7280; font-style: italic; }
+    .db-pick { width: 100%; max-width: 40em; margin: 0 auto; gap: 0.5em; overflow-y: auto; }
+    .db-choice { display: grid; grid-template-columns: auto 1fr; column-gap: 0.6em; align-items: center; padding: 0.5em 0.6em; border: 0.08em solid #2e3543; border-radius: 0.4em; cursor: pointer; font-size: 0.9em; }
+    .db-choice:has(input:checked) { border-color: #d12328; }
+    .db-choice input { width: 1em; height: 1em; accent-color: #d12328; }
+    .db-choice .db-name { font-weight: 800; overflow-wrap: anywhere; }
+    .db-choice .db-muted { grid-column: 2; font-size: 0.75em; color: #9ca3af; }
     @media (orientation: portrait), (max-width: 48em) {
       .db { height: auto; min-height: 100vh; overflow: visible; }
       .db-grid { grid-template-columns: 1fr; gap: 0.6em; }
@@ -110,6 +116,9 @@
 
   <!-- Tournament logic (plain JS, no build step) -->
   <script src="tournament-logic.js"></script>
+  <!-- Publishing to Firebase: off while firebase-config.js holds null -->
+  <script src="firebase-config.js"></script>
+  <script src="firebase-remote.js"></script>
 
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
@@ -131,9 +140,18 @@
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
       getCompletedMatchesList, formatHistoryRow, tournamentCsv,
-      buildDisplayBoard, initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl,
-      DEFAULT_DISPLAY_LAYOUT, splitFromPointer, nudgeSplit, loadDisplayLayout, saveDisplayLayout, isTournamentStorageKey
+      initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl,
+      DEFAULT_DISPLAY_LAYOUT, splitFromPointer, nudgeSplit, loadDisplayLayout, saveDisplayLayout, isTournamentStorageKey,
+      watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
+      publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
+      remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
+      parsePublishedTournament, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
+
+    // Publishing to Firebase: null unless firebase-config.js holds a config.
+    // UI tests swap in a recording fake (window.foosRemoteForTests).
+    const remote = window.foosRemoteForTests ||
+      window.FirebaseRemote.create({ config: window.FOOS_FIREBASE_CONFIG, logic: window.TournamentLogic });
 
     // e.g. "Fri, Oct 16, 11:40 PM" in the viewer's local time.
     const formatStartedAt = (iso) =>
@@ -319,7 +337,7 @@
       );
     }
 
-    function DisplayBoard({ board, title, started, onExit, onOpenWindow, layout, onLayoutChange }) {
+    function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, layout, onLayoutChange }) {
       const gridRef = useRef(null);
       const sideRef = useRef(null);
       return (
@@ -330,6 +348,7 @@
               <div className="db-sub">Started {started}</div>
             </div>
             <div className="db-actions">
+              {onSwitch && <button className="db-btn" onClick={onSwitch}>Switch tournament</button>}
               {onOpenWindow && <button className="db-btn" onClick={onOpenWindow}>Open on Another Screen</button>}
               <button className="db-btn" onClick={onExit}>Exit Display</button>
             </div>
@@ -422,6 +441,54 @@
       );
     }
 
+    // Display Mode's first screen when publishing is set up: this device's
+    // tournament (selected by default, so Show or Enter puts it up) and the
+    // published ones.
+    function DisplayPicker({ choices, loading, unavailable, onShow, onExit }) {
+      const [selected, setSelected] = useState('local');
+      const show = (e) => {
+        e.preventDefault();
+        onShow(choices.find(c => c.key === selected));
+      };
+      return (
+        <div data-testid="display-picker" className="db">
+          <div className="db-head">
+            <div className="db-title">Choose a tournament</div>
+            <div className="db-actions">
+              <button className="db-btn" onClick={onExit}>Exit Display</button>
+            </div>
+          </div>
+          <form className="db-panel db-pick" onSubmit={show}>
+            {choices.map(c => (
+              <label key={c.key} data-testid="display-choice" data-source={c.source} className="db-choice">
+                <input type="radio" name="display-choice" value={c.key} checked={selected === c.key} onChange={() => setSelected(c.key)} />
+                <span className="db-name">{c.source === 'local' ? 'This device' : c.name}</span>
+                <span className="db-muted">{c.source === 'local' ? c.name : `Updated ${formatStartedAt(c.updatedAt)}`}</span>
+              </label>
+            ))}
+            {loading && <div className="db-empty">Looking for published tournaments…</div>}
+            {unavailable && <div className="db-empty">Published tournaments can't be reached right now. This device still works.</div>}
+            <div><button type="submit" className="db-btn">Show</button></div>
+          </form>
+        </div>
+      );
+    }
+
+    // A full-screen Display Mode message (loading, or a tournament that is gone).
+    function DisplayMessage({ text, onSwitch, onExit }) {
+      return (
+        <div data-testid="display-message" className="db">
+          <div className="db-head">
+            <div className="db-title">{text}</div>
+            <div className="db-actions">
+              {onSwitch && <button className="db-btn" onClick={onSwitch}>Switch tournament</button>}
+              <button className="db-btn" onClick={onExit}>Exit Display</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     // ==========================================
     // MAIN REACT APPLICATION
     // ==========================================
@@ -435,8 +502,15 @@
       const [isSaved, setIsSaved] = useState(true);
       // ?display opens a display-only window (e.g. on a TV): it follows the
       // control desk through storage events and never saves.
-      const [isDisplayWindow] = useState(() => isDisplayModeUrl(window.location.search));
+      // ?remote=<id> opens a display-only window on a published tournament.
+      const [remoteId] = useState(() => remoteIdFromSearch(window.location.search));
+      const [isDisplayWindow] = useState(() => isDisplayModeUrl(window.location.search) || remoteId !== null);
       const [displayMode, setDisplayMode] = useState(isDisplayWindow);
+      // What Display Mode shows: null (the list), { source: 'local' } or { source: 'remote', id }.
+      const [displaySource, setDisplaySource] = useState(() => initialDisplaySource(remoteId, remote !== null));
+      const [displayList, setDisplayList] = useState({ loading: true, published: [] });
+      // A followed published tournament: { loading }, { tournament }, { gone } or { error }.
+      const [remoteView, setRemoteView] = useState({ loading: true });
       const [displayLayout, setDisplayLayout] = useState(() => loadDisplayLayout(storage));
       useEffect(() => {
         saveDisplayLayout(storage, displayLayout);
@@ -550,6 +624,168 @@
         window.addEventListener('storage', onStorage);
         return () => window.removeEventListener('storage', onStorage);
       });
+
+      // --- DISPLAY MODE SOURCES: the list of published tournaments, and a followed one ---
+      useEffect(() => {
+        if (!displayMode || displaySource !== null) return undefined;
+        let cancelled = false;
+        remote.published().then(
+          published => !cancelled && setDisplayList({ published }),
+          () => !cancelled && setDisplayList({ published: [], unavailable: true })
+        );
+        return () => { cancelled = true; };
+      }, [displayMode, displaySource]);
+
+      const followedId = displayMode && displaySource && displaySource.source === 'remote' ? displaySource.id : null;
+      useEffect(() => {
+        if (!followedId) return undefined;
+        if (!remote) {
+          setRemoteView({ error: "Publishing isn't set up on this page." });
+          return undefined;
+        }
+        setRemoteView({ loading: true });
+        return remote.subscribe(
+          followedId,
+          t => setRemoteView(parsePublishedTournament(t)),
+          () => setRemoteView({ error: "Can't reach the published tournament right now." })
+        );
+      }, [followedId]);
+
+      const openDisplayMode = () => {
+        setDisplayList({ loading: true, published: [] });
+        setDisplaySource(initialDisplaySource(null, remote !== null));
+        setDisplayMode(true);
+      };
+
+      const switchDisplaySource = () => {
+        setDisplayList({ loading: true, published: [] });
+        setDisplaySource(null);
+      };
+
+      // --- PUBLISHING (FIREBASE) ---
+      // publishing: this browser's record { tournamentId, slot, code } (one slot
+      // per browser). publishStatus is for this session: null or { kind: 'live' |
+      // 'moved' | 'full' | 'error', ... }. Only watched sections (what Display
+      // Mode shows) trigger a write, at most every 5 seconds.
+      const [publishing, setPublishing] = useState(() => loadPublishing(storage));
+      const [publishStatus, setPublishStatus] = useState(null);
+      const [replacePrompt, setReplacePrompt] = useState(null);
+      const [showPublishing, setShowPublishing] = useState(false);
+      // Take over: null or { list, unavailable, id, code }.
+      const [takeOver, setTakeOver] = useState(null);
+      const codeFileInput = useRef(null);
+      const lastPublished = useRef({ sig: null, at: null });
+      const latestState = useRef(null);
+      latestState.current = currentTournamentState();
+      const watchedSig = watchedSections(boardForTournament(latestState.current));
+      const isPublishingHere = remote !== null && publishing !== null && publishing.tournamentId === tournamentId &&
+        !readOnlyView && !isDisplayWindow;
+
+      useEffect(() => {
+        if (!isDisplayWindow) savePublishing(storage, publishing);
+      }, [storage, publishing, isDisplayWindow]);
+
+      useEffect(() => {
+        if (!isPublishingHere || !watchedChanged(lastPublished.current.sig, watchedSig)) return undefined;
+        const timer = setTimeout(() => {
+          lastPublished.current = { sig: watchedSig, at: Date.now() };
+          remote.publish({ state: latestState.current }).then(result => {
+            const status = publishResultStatus(result);
+            if (status.kind === 'moved') setPublishing(null);
+            setPublishStatus(status);
+          }, () => setPublishStatus({ kind: 'error' }));
+        }, publishThrottle(lastPublished.current.at, Date.now()));
+        return () => clearTimeout(timer);
+      }, [isPublishingHere, watchedSig]);
+
+      // Starting or replacing succeeded (or found the slots full / a slot to replace).
+      const applyPublishStart = (result, state, code) => {
+        const outcome = publishStartOutcome(result, { tournamentId: state.tournamentId, code });
+        if (outcome.prompt) {
+          setReplacePrompt({ held: outcome.prompt, code });
+          return;
+        }
+        if (outcome.record) {
+          lastPublished.current = { sig: watchedSections(boardForTournament(state)), at: Date.now() };
+          setPublishing(outcome.record);
+        }
+        setPublishStatus(outcome.status);
+      };
+
+      const beginPublishing = (state) => {
+        const code = generatePublisherCode();
+        remote.startPublishing({ state, code }).then(
+          result => applyPublishStart(result, state, code),
+          () => setPublishStatus({ kind: 'start-error' })
+        );
+      };
+
+      // All slots were in use: try again at the next watched change after one frees.
+      useEffect(() => {
+        if (shouldRetryPublishing(publishStatus, tournamentId, Date.now())) beginPublishing(latestState.current);
+      }, [watchedSig]);
+
+      const replacePublishedTournament = () => {
+        const { held, code } = replacePrompt;
+        const state = latestState.current;
+        setReplacePrompt(null);
+        remote.replacePublished({ state, code, held }).then(
+          result => applyPublishStart(result, state, code),
+          () => setPublishStatus({ kind: 'start-error' })
+        );
+      };
+
+      const copyText = (text) => {
+        navigator.clipboard.writeText(text).catch(() => alert('Copying failed. Select the text and copy it instead.'));
+      };
+
+      const saveCodeFile = () => {
+        const state = currentTournamentState();
+        const viewerUrl = remoteTournamentUrl(window.location.href, tournamentId);
+        downloadText(publisherCodeFile({ state, code: publishing.code, viewerUrl }), publisherCodeFileName(state), 'text/plain');
+      };
+
+      const openTakeOver = () => {
+        setTakeOver({ list: null, id: '', code: '' });
+        remote.published().then(
+          list => setTakeOver(prev => prev && { ...prev, list }),
+          () => setTakeOver(prev => prev && { ...prev, list: [], unavailable: true })
+        );
+      };
+
+      const handleCodeFile = (e) => {
+        const file = e.target.files[0];
+        e.target.value = '';
+        if (!file) return;
+        file.text().then(text => {
+          const result = parsePublisherCodeFile(text);
+          if (result.error) {
+            alert(result.error);
+            return;
+          }
+          setTakeOver(prev => ({ ...prev, id: result.tournamentId, code: formatPublisherCode(result.code) }));
+        });
+      };
+
+      const submitTakeOver = (releaseCurrent) => {
+        const { id } = takeOver;
+        const code = normalizePublisherCode(takeOver.code);
+        remote.takeOver({ id, code, releaseCurrent }).then(result => {
+          const outcome = takeOverOutcome(result, { id, code });
+          if (outcome.error) {
+            alert(outcome.error);
+          } else if (outcome.record) {
+            storeImportedTournament(storage, outcome.tournament, { mode: 'replace' });
+            lastPublished.current = { sig: watchedSections(boardForTournament(outcome.tournament)), at: Date.now() };
+            applyTournament(outcome.tournament);
+            setPublishing(outcome.record);
+            setPublishStatus({ kind: 'live' });
+            setTakeOver(null);
+          } else if (confirm(`Taking over stops publishing "${outcome.askRelease}". Continue?`)) {
+            submitTakeOver(true);
+          }
+        }, () => alert("Can't reach Firebase right now."));
+      };
 
       // --- ADMIN LOCK / VIEW ONLY TOGGLE ---
       const applyLockState = ({ pin, isLocked: locked }) => {
@@ -694,8 +930,12 @@
       };
 
       // Starts a fresh tournament; the current one stays saved under its id.
+      // With publishing set up, a tournament started here is published at once
+      // (the one a first visit creates on its own stays local).
       const startNewTournament = () => {
-        applyTournament(newTournamentState(createTournamentId(), new Date()));
+        const fresh = newTournamentState(createTournamentId(), new Date());
+        applyTournament(fresh);
+        if (remote) beginPublishing(fresh);
       };
 
       // --- SAVED TOURNAMENTS ---
@@ -752,10 +992,35 @@
           }
           setImportState({
             step: 'review',
+            source: 'a file',
             tournament: result.tournament,
             exists: tournamentExists(storage, result.tournament.tournamentId)
           });
         });
+      };
+
+      const openFirebaseImport = () => {
+        setImportState({ step: 'firebase', list: null });
+        remote.published().then(
+          list => setImportState(prev => prev && prev.step === 'firebase' ? { ...prev, list } : prev),
+          () => setImportState(prev => prev && prev.step === 'firebase' ? { ...prev, list: [], unavailable: true } : prev)
+        );
+      };
+
+      const chooseFirebaseImport = (id) => {
+        remote.fetchTournament(id).then(published => {
+          const result = parsePublishedTournament(published);
+          if (!result.tournament) {
+            alert(result.error || 'That tournament is no longer published.');
+            return;
+          }
+          setImportState({
+            step: 'review',
+            source: 'Firebase',
+            tournament: result.tournament,
+            exists: tournamentExists(storage, result.tournament.tournamentId)
+          });
+        }, () => alert("Can't reach Firebase right now."));
       };
 
       // mode: 'add', 'replace' or 'copy' (see storeImportedTournament).
@@ -777,7 +1042,7 @@
         const previous = currentTournamentState();
         const { tournament } = importState;
         applyTournament(tournament);
-        setReadOnlyView({ name: tournament.tournamentName, previous });
+        setReadOnlyView({ name: tournament.tournamentName, source: importState.source, previous });
       };
 
       const closeReadOnlyView = () => {
@@ -900,19 +1165,46 @@
       const bracketReadyMatches = assignBracketTables(bracketData, tableCount);
 
       if (displayMode) {
+        const exitDisplay = () => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false));
+        const onSwitch = remote ? switchDisplaySource : null;
+        if (displaySource === null) {
+          return (
+            <DisplayPicker
+              choices={displayChoices({ id: tournamentId, name: tournamentName }, displayList.published)}
+              loading={displayList.loading}
+              unavailable={displayList.unavailable}
+              onShow={setDisplaySource}
+              onExit={exitDisplay}
+            />
+          );
+        }
+        if (displaySource.source === 'remote') {
+          if (!remoteView.tournament) {
+            const message = remoteView.loading ? 'Loading…' : remoteView.gone ? 'This tournament is no longer published.' : remoteView.error;
+            return <DisplayMessage text={message} onSwitch={onSwitch} onExit={exitDisplay} />;
+          }
+          const followed = remoteView.tournament;
+          return (
+            <DisplayBoard
+              board={boardForTournament(followed)}
+              title={followed.tournamentName}
+              started={formatStartedAt(followed.startedAt)}
+              onExit={exitDisplay}
+              onOpenWindow={isDisplayWindow ? null : () => window.open(remoteTournamentUrl(window.location.href, displaySource.id), '_blank')}
+              onSwitch={onSwitch}
+              layout={displayLayout}
+              onLayoutChange={setDisplayLayout}
+            />
+          );
+        }
         return (
           <DisplayBoard
-            board={buildDisplayBoard({
-              matches,
-              bracketAssignments: bracketReadyMatches,
-              tableCount,
-              players,
-              completedMatches: completedMatchesList
-            })}
+            board={boardForTournament(latestState.current)}
             title={tournamentName}
             started={formatStartedAt(startedAt)}
-            onExit={() => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false))}
+            onExit={exitDisplay}
             onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href), '_blank')}
+            onSwitch={onSwitch}
             layout={displayLayout}
             onLayoutChange={setDisplayLayout}
           />
@@ -959,7 +1251,7 @@
               {/* Action Buttons */}
               <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0 whitespace-nowrap">
                 <button 
-                  onClick={() => setDisplayMode(true)}
+                  onClick={openDisplayMode}
                   className="bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-3 py-2 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center gap-1.5 transition"
                   title="Show tables, leaderboard and history for TVs and phones"
                 >
@@ -1009,7 +1301,7 @@
 
                   <div className="flex flex-col gap-3">
                     <button 
-                      onClick={() => { setDisplayMode(true); setIsMobileMenuOpen(false); }}
+                      onClick={() => { openDisplayMode(); setIsMobileMenuOpen(false); }}
                       className="w-full bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-4 py-3 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center justify-center gap-2 transition"
                     >
                       <span>📺</span> Display Mode
@@ -1056,12 +1348,27 @@
 
             {readOnlyView && (
               <div data-testid="read-only-banner" className="bg-sky-950/60 border border-sky-700 text-sky-100 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center justify-between gap-3">
-                <span><span>📄</span> Read-only view of &ldquo;{readOnlyView.name}&rdquo; from a file. Nothing is saved.</span>
+                <span><span>📄</span> Read-only view of &ldquo;{readOnlyView.name}&rdquo; from {readOnlyView.source}. Nothing is saved.</span>
                 <button
                   onClick={closeReadOnlyView}
                   className="bg-sky-700 hover:bg-sky-600 text-white px-3 py-1 rounded font-bold flex-shrink-0"
                 >
                   Close View
+                </button>
+              </div>
+            )}
+
+            {publishStatus && publishStatus.kind !== 'live' && !isDisplayWindow && (
+              <div data-testid="publish-status" className="bg-amber-950/60 border border-amber-700 text-amber-100 text-xs font-bold px-4 py-2.5 rounded-lg flex items-center justify-between gap-3">
+                <span>
+                  📡{' '}
+                  {publishStatus.kind === 'moved' && 'Publishing moved to another device. Changes here are no longer published.'}
+                  {publishStatus.kind === 'full' && `All 5 publishing slots are in use. The next one frees at ${new Date(publishStatus.nextFreeAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}. This tournament runs normally meanwhile.`}
+                  {publishStatus.kind === 'error' && "Couldn't reach Firebase, so the latest change isn't published yet. It goes with the next one."}
+                  {publishStatus.kind === 'start-error' && "Couldn't reach Firebase, so this tournament isn't published. It runs normally in this browser."}
+                </span>
+                <button onClick={() => setPublishStatus(null)} className="bg-amber-800 hover:bg-amber-700 text-white px-3 py-1 rounded font-bold flex-shrink-0">
+                  Dismiss
                 </button>
               </div>
             )}
@@ -1331,6 +1638,150 @@
               </div>
             )}
 
+            {replacePrompt && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div data-testid="replace-prompt" className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-white">📡 Replace the published tournament?</h3>
+                  <p className="text-xs text-gray-300">
+                    You're already publishing &ldquo;{replacePrompt.held.name}&rdquo;. Replace it with this new tournament? The old one
+                    stays in Saved Tournaments but stops being published.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setReplacePrompt(null)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Keep Current
+                    </button>
+                    <button
+                      onClick={replacePublishedTournament}
+                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                    >
+                      Replace
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showPublishing && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div data-testid="publishing-dialog" className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-md w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-black text-white uppercase tracking-wide">📡 Publishing</h3>
+                  {takeOver ? (
+                    <div data-testid="take-over" className="space-y-3">
+                      <p className="text-xs text-gray-300">
+                        Pick the tournament and enter its publisher code, or choose a saved code file. This browser then
+                        opens the tournament and publishes its changes.
+                      </p>
+                      {takeOver.list === null && <p className="text-xs text-gray-400 italic">Looking for published tournaments…</p>}
+                      {takeOver.unavailable && <p className="text-xs text-amber-300">Firebase can't be reached right now.</p>}
+                      <div className="space-y-1">
+                        {(takeOver.list || []).map(t => (
+                          <label key={t.id} data-testid="take-over-choice" className="flex items-center gap-2 text-sm text-white">
+                            <input
+                              type="radio"
+                              name="take-over-choice"
+                              checked={takeOver.id === t.id}
+                              onChange={() => setTakeOver({ ...takeOver, id: t.id })}
+                            />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                      <input
+                        data-testid="take-over-code"
+                        value={takeOver.code}
+                        onChange={(e) => setTakeOver({ ...takeOver, code: e.target.value })}
+                        placeholder="XXXX-XXXX-XXXX"
+                        aria-label="Publisher code"
+                        className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-2 text-sm text-white font-mono uppercase"
+                      />
+                      <input
+                        ref={codeFileInput}
+                        data-testid="code-file-input"
+                        type="file"
+                        accept=".txt,text/plain"
+                        onChange={handleCodeFile}
+                        className="hidden"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => codeFileInput.current.click()}
+                          className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs py-2 rounded font-semibold"
+                        >
+                          Choose Code File
+                        </button>
+                        <button
+                          onClick={() => submitTakeOver(false)}
+                          disabled={!takeOver.id || !normalizePublisherCode(takeOver.code)}
+                          className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Take Over
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => setTakeOver(null)}
+                        className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
+                      >
+                        Back
+                      </button>
+                    </div>
+                  ) : (
+                    <React.Fragment>
+                      <div data-testid="publishing-state" className="text-xs text-gray-300 space-y-3">
+                        {isPublishingHere ? (
+                          <React.Fragment>
+                            <p className="text-emerald-300 font-bold">Live in slot {publishing.slot}. Anyone can follow it in Display Mode.</p>
+                            <div>
+                              <span className="block text-[11px] text-gray-400 uppercase tracking-wider">Viewer link</span>
+                              <code data-testid="viewer-link" className="block break-all text-white">{remoteTournamentUrl(window.location.href, tournamentId)}</code>
+                              <button onClick={() => copyText(remoteTournamentUrl(window.location.href, tournamentId))} className="mt-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
+                                Copy Link
+                              </button>
+                            </div>
+                            <div>
+                              <span className="block text-[11px] text-gray-400 uppercase tracking-wider">Publisher code</span>
+                              <code data-testid="publisher-code" className="block text-lg text-white font-mono">{formatPublisherCode(publishing.code)}</code>
+                              <div className="flex gap-2 mt-1">
+                                <button onClick={() => copyText(formatPublisherCode(publishing.code))} className="bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
+                                  Copy Code
+                                </button>
+                                <button onClick={saveCodeFile} className="bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
+                                  Save Code to File
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-amber-300 mt-1">Anyone with this code can take over publishing. Keep it private.</p>
+                            </div>
+                          </React.Fragment>
+                        ) : publishing ? (
+                          <p>
+                            This browser publishes &ldquo;{savedTournamentName(storage, publishing.tournamentId)}&rdquo;. Open it from
+                            Saved Tournaments to keep publishing its changes.
+                          </p>
+                        ) : (
+                          <p>This tournament isn't published. Pressing New Tournament publishes the new one.</p>
+                        )}
+                      </div>
+                      <button
+                        onClick={openTakeOver}
+                        disabled={editingLocked}
+                        className="w-full bg-cfc-panelLight hover:bg-gray-700 text-white text-xs py-2 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Take Over Publishing…
+                      </button>
+                    </React.Fragment>
+                  )}
+                  <button
+                    onClick={() => { setShowPublishing(false); setTakeOver(null); }}
+                    className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+
             {savedTournaments && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
                 <div data-testid="saved-tournaments" className="bg-cfc-panel border border-cfc-border rounded-xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl">
@@ -1439,13 +1890,36 @@
                       </button>
                       <button
                         data-testid="import-source-firebase"
-                        disabled
-                        className="w-full bg-cfc-dark border border-cfc-border rounded p-3 text-left opacity-50 cursor-not-allowed"
+                        onClick={openFirebaseImport}
+                        disabled={!remote}
+                        className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border rounded p-3 text-left disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <span className="block text-sm font-bold text-white">☁️ From Firebase</span>
-                        <span className="block text-[11px] text-gray-400">Coming soon.</span>
+                        <span className="block text-[11px] text-gray-400">
+                          {remote ? 'A tournament published from another device.' : "Publishing isn't set up on this page."}
+                        </span>
                       </button>
                     </div>
+                  ) : importState.step === 'firebase' ? (
+                    <ul data-testid="firebase-import-list" className="space-y-2">
+                      {importState.list === null && <li className="text-xs text-gray-400 italic">Looking for published tournaments…</li>}
+                      {importState.unavailable && <li className="text-xs text-amber-300">Firebase can't be reached right now.</li>}
+                      {importState.list !== null && !importState.unavailable && importState.list.length === 0 && (
+                        <li className="text-xs text-gray-400 italic">Nothing is published right now.</li>
+                      )}
+                      {(importState.list || []).map(t => (
+                        <li key={t.id}>
+                          <button
+                            data-testid="firebase-import-choice"
+                            onClick={() => chooseFirebaseImport(t.id)}
+                            className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border rounded p-3 text-left"
+                          >
+                            <span className="block text-sm font-bold text-white">{t.name}</span>
+                            <span className="block text-[11px] text-gray-400">Started {formatStartedAt(t.startedAt)} · updated {formatStartedAt(t.updatedAt)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   ) : (
                     <div className="space-y-3">
                       <div className="bg-cfc-dark border border-cfc-border rounded p-3">
@@ -1814,6 +2288,16 @@
                       >
                         Saved Tournaments
                       </button>
+                      {remote && (
+                        <button
+                          onClick={() => setShowPublishing(true)}
+                          disabled={readOnlyView !== null}
+                          data-testid="publishing-button"
+                          className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          📡 Publishing{isPublishingHere ? ' · Live' : ''}
+                        </button>
+                      )}
                     </div>
                   </div>
 

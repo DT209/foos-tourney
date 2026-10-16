@@ -12,6 +12,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
 const puppeteer = require('puppeteer-core');
+const { installFakeRemote } = require('./fake-remote');
 
 const ROOT = path.resolve(__dirname, '..');
 const COVERAGE_DIR = path.join(ROOT, 'coverage-ui');
@@ -90,7 +91,8 @@ async function openApp({
   viewport = { width: 1280, height: 900 },
   beforeLoad,
   liveLeaderboard,
-  blockLogo = false
+  blockLogo = false,
+  remote = false
 } = {}) {
   const chrome = findChrome();
   if (!chrome) throw new Error('Chrome not found: set CHROME_PATH or run the build with --skip-e2e');
@@ -106,6 +108,8 @@ async function openApp({
   await page.emulateTimezone(timezone);
   await page.evaluateOnNewDocument(FAKE_CLOCK);
   if (beforeLoad) await page.evaluateOnNewDocument(beforeLoad);
+  // remote: publishing switched on, with the recording fake (fake-remote.js).
+  if (remote) await page.evaluateOnNewDocument(installFakeRemote);
 
   // Stub the club site: a live leaderboard (with CORS allowed) and/or a broken logo.
   if (liveLeaderboard || blockLogo) {
@@ -140,6 +144,7 @@ async function openApp({
       await extra.setViewport(viewport);
       if (collectCoverage) await extra.coverage.startJSCoverage(COVERAGE_OPTIONS);
       extra.on('pageerror', e => app.errors.push(e.message));
+      if (remote) await extra.evaluateOnNewDocument(installFakeRemote);
       extraPages.push(extra);
       await extra.goto(`${url}${search}`, { waitUntil: 'networkidle0' });
       return extra;
@@ -327,6 +332,19 @@ async function openApp({
     },
     storageKeys() {
       return page.evaluate(() => Object.keys(localStorage));
+    },
+    // The fake remote (remote: true): calls made from a page, and the shared server.
+    remoteCalls(target = page) {
+      return target.evaluate(() => window.__remoteCalls);
+    },
+    remoteServer() {
+      return page.evaluate(() => JSON.parse(localStorage.getItem('__fakeRemote.server') || 'null'));
+    },
+    setRemoteServer(server) {
+      return page.evaluate(s => localStorage.setItem('__fakeRemote.server', JSON.stringify(s)), server);
+    },
+    setRemoteConfig(config) {
+      return page.evaluate(c => localStorage.setItem('__fakeRemote.config', JSON.stringify(c)), config);
     }
   };
 

@@ -69,13 +69,13 @@ describe('export', () => {
 });
 
 describe('import dialog', () => {
-  it('offers a file and Firebase (not yet available); Cancel closes it', async () => {
+  it('offers a file and Firebase (off until publishing is set up); Cancel closes it', async () => {
     app = await openApp();
     await openImport();
     const text = await app.textOf(IMPORT);
     assert.match(text, /From a file/);
     assert.match(text, /From Firebase/);
-    assert.match(text, /Coming soon/);
+    assert.match(text, /Publishing isn't set up on this page/);
     const firebaseDisabled = await app.page.$eval('[data-testid="import-source-firebase"]', b => b.disabled);
     assert.equal(firebaseDisabled, true);
     await app.click('From a file', { within: IMPORT }); // opens the OS picker; nothing to choose headless

@@ -34,7 +34,16 @@ const {
   loadPublishing,
   savePublishing,
   remoteTournamentUrl,
-  remoteIdFromSearch
+  remoteIdFromSearch,
+  boardForTournament,
+  publishStartOutcome,
+  takeOverOutcome,
+  parsePublishedTournament,
+  publishResultStatus,
+  shouldRetryPublishing,
+  initialDisplaySource,
+  savedTournamentName,
+  saveTournament
 } = globalThis.TournamentLogic;
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -392,5 +401,86 @@ describe('remote view links', () => {
     assert.equal(remoteIdFromSearch(`?remote=${ID}`), ID);
     assert.equal(remoteIdFromSearch('?remote=a/b'), null);
     assert.equal(remoteIdFromSearch('?display=1'), null);
+  });
+});
+
+describe('boardForTournament', () => {
+  it('builds the Display Mode board from a tournament state', () => {
+    const board = boardForTournament(state({ tableCount: 3 }));
+    assert.equal(board.tables.length, 3);
+    assert.deepEqual(
+      board.standings.map(p => p.name),
+      ['Ann']
+    );
+    assert.deepEqual(board.history, []);
+  });
+});
+
+describe('page outcomes', () => {
+  it('map startPublishing results', () => {
+    const ids = { tournamentId: ID, code: 'ABCD2345EFGH' };
+    assert.deepEqual(publishStartOutcome({ action: 'published', slot: 2 }, ids), {
+      record: { tournamentId: ID, slot: 2, code: 'ABCD2345EFGH' },
+      status: { kind: 'live' }
+    });
+    const ask = { action: 'ask-replace', slot: 1, tournamentId: ID2, name: 'Week 2' };
+    assert.deepEqual(publishStartOutcome(ask, ids), { prompt: ask });
+    assert.deepEqual(publishStartOutcome({ action: 'full', nextFreeAt: NOW }, ids), {
+      status: { kind: 'full', nextFreeAt: NOW, tournamentId: ID }
+    });
+  });
+
+  it('map takeOver results', () => {
+    const ids = { id: ID, code: 'ABCD2345EFGH' };
+    assert.deepEqual(takeOverOutcome({ error: 'nope' }, ids), { error: 'nope' });
+    assert.deepEqual(takeOverOutcome({ action: 'ask-release', name: 'Mine' }, ids), { askRelease: 'Mine' });
+    const taken = takeOverOutcome({ action: 'taken', slot: 4, exportText: publishedExport(state()) }, ids);
+    assert.equal(taken.tournament.tournamentName, 'Week 3');
+    assert.deepEqual(taken.record, { tournamentId: ID, slot: 4, code: 'ABCD2345EFGH' });
+    assert.match(takeOverOutcome({ action: 'taken', slot: 4, exportText: 'junk' }, ids).error, /isn't a Foos Tourney/);
+  });
+
+  it('parse a published tournament, or notice it is gone', () => {
+    assert.deepEqual(parsePublishedTournament(null), { gone: true });
+    assert.equal(parsePublishedTournament({ exportText: publishedExport(state()) }).tournament.tournamentId, ID);
+    assert.ok(parsePublishedTournament({ exportText: '{}' }).error);
+  });
+});
+
+describe('page decisions', () => {
+  it('turn a publish result into a status', () => {
+    assert.deepEqual(publishResultStatus({ ok: true }), { kind: 'live' });
+    assert.deepEqual(publishResultStatus({ error: 'moved' }), { kind: 'moved' });
+  });
+
+  it('retry a full publish only for the same tournament, once a slot frees', () => {
+    const full = { kind: 'full', nextFreeAt: NOW, tournamentId: ID };
+    assert.equal(shouldRetryPublishing(full, ID, NOW), true);
+    assert.equal(shouldRetryPublishing(full, ID, NOW - 1), false);
+    assert.equal(shouldRetryPublishing(full, ID2, NOW), false);
+    assert.equal(shouldRetryPublishing({ kind: 'live' }, ID, NOW), false);
+    assert.equal(shouldRetryPublishing(null, ID, NOW), false);
+  });
+
+  it('open Display Mode on a remote link, the list, or this device', () => {
+    assert.deepEqual(initialDisplaySource(ID, false), { source: 'remote', id: ID });
+    assert.equal(initialDisplaySource(null, true), null);
+    assert.deepEqual(initialDisplaySource(null, false), { source: 'local' });
+  });
+
+  it('name a saved tournament', () => {
+    const data = new Map();
+    const storage = {
+      get length() {
+        return data.size;
+      },
+      key: i => [...data.keys()][i] ?? null,
+      getItem: k => (data.has(k) ? data.get(k) : null),
+      setItem: (k, v) => data.set(k, String(v)),
+      removeItem: k => data.delete(k)
+    };
+    saveTournament(storage, state());
+    assert.equal(savedTournamentName(storage, ID), 'Week 3');
+    assert.equal(savedTournamentName(storage, ID2), '');
   });
 });
