@@ -37,6 +37,7 @@ mindmap
       Tables, leaderboard and history for TVs and phones
       Panels scroll by themselves
       Second screen window that follows live play
+      Resizable areas, remembered per browser
     Admin Lock
       PIN guards against accidental edits
 ```
@@ -151,9 +152,9 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 
 ## Exporting and importing tournaments
 
-- **Export** on any row in **Saved Tournaments** offers two formats for that tournament:
-  - **CSV**: match results, one row per scored game, for spreadsheets.
-  - **JSON**: the full tournament (roster, matches, bracket, settings) for importing:
+- Every row in **Saved Tournaments** has two export buttons for that tournament:
+  - **Export CSV**: match results, one row per scored game, for spreadsheets.
+  - **Export JSON**: the full tournament (roster, matches, bracket, settings) for importing:
     `{ format: "foos-tourney", version: 1, exportedAt, tournament }`.
 - While the admin lock is on, Saved Tournaments still opens so results can be exported. Open, Delete,
   Import and New Tournament stay disabled.
@@ -175,7 +176,8 @@ flowchart TD
     NT["New Tournament"] --> B
     B --> SV["Saved Tournaments"]
     SV --> O["Open"]
-    SV --> X["Export: .json file"]
+    SV --> X["Export CSV: results"]
+    SV --> XJ["Export JSON: full tournament"]
     SV --> DEL["Delete (not the current one)"]
     SV --> IM["Import…"]
     IM --> SRC{"Source"}
@@ -202,6 +204,12 @@ to reduce motion scroll manually instead. All sizes are relative to the screen: 
 the tables beside the leaderboard and history, portrait screens stack them. It works while locked and
 in the read-only view.
 
+On landscape screens the areas can be resized. Drag the handle between the tables and the right-hand
+column, or between the leaderboard and match history. With a handle focused, the arrow keys move it in
+5% steps, and a double-click resets it. No area goes below 20%. Sizes are fractions of the screen, so
+the layout stays proportional on any display. They're remembered in this browser, including by the
+second-screen window. Portrait phones keep the stacked layout without handles.
+
 **Open on Another Screen** opens the board in a new window (`TournamentManager.html?display=1`) that
 can be moved to a TV. It updates as you score on the control desk and never saves anything. It only
 follows tournaments on the same computer. **Exit Display** returns to the control desk.
@@ -212,6 +220,8 @@ flowchart LR
     LS -->|"storage event"| WIN["?display window on a TV"]
     DESK -->|"Display Mode"| BOARD["Board in the same tab"]
     BOARD -->|"Open on Another Screen"| WIN
+    BOARD -->|"drag handles or arrow keys"| LAYOUT[("Layout preference")]
+    LAYOUT --> WIN
     WIN -->|"Exit Display"| DESK2["Control desk in that window"]
 ```
 

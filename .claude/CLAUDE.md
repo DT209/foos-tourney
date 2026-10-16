@@ -71,7 +71,8 @@ when the module's flow changes.
   tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
   timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only
   relative units (`em`, `vw`/`vh`); px appears only as the font-size floor and ceiling in `clamp()`.
-  Keep them relative.
+  Keep them relative. Area sizes are fractions in `displayLayout` (`foosTourney.displayLayout`, a browser
+  preference, not tournament data), applied through CSS variables on the grid.
 - Downloads go through `downloadText`, which percent-encodes the whole payload. `encodeURI` leaves `#`,
   which truncates `data:` URLs.
 - Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams

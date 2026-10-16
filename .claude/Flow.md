@@ -233,9 +233,17 @@ flowchart TD
     T --> AS["AutoScroll panels: nextAutoScroll every 50 ms"]
     S --> AS
     H --> AS
-    DW --> SE["storage event: loadCurrentTournament, restoreTournamentState, applyTournament"]
+    DW --> SE["storage event for a tournament key (isTournamentStorageKey): reload and applyTournament"]
     SE --> RENDER
+    RENDER --> SP["Splitter handles: splitFromPointer on drag, nudgeSplit on arrow keys, default on double-click"]
+    SP --> LY["displayLayout state, fractions clamped to 20-80%"]
+    LY -->|"--db-left / --db-right / --db-top / --db-bottom CSS variables"| RENDER
+    LY --> SV["saveDisplayLayout: foosTourney.displayLayout, a browser preference"]
 ```
+
+The layout is loaded with `loadDisplayLayout` (invalid values fall back per value). Drag listeners
+attach to `window`, so a drag keeps going outside the handle. Portrait screens hide the handles and
+stack the panels.
 
 `nextAutoScroll` cycles top pause, scroll, bottom pause, back to top. The step is 0.4% of the panel's
 height per tick, so speed scales with the screen. Content that fits never moves, and
@@ -243,17 +251,17 @@ height per tick, so speed scales with the screen. Content that fits never moves,
 
 ## Module sections and main functions
 
-| Section in `tournament-logic.js` | Main functions                                                                                                                                                                   |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                                                       |
-| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                         |
-| Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament` |
-| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                             |
-| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`                                              |
-| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                  |
-| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                    |
-| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                     |
-| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                    |
-| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                        |
-| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`                                  |
-| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                                                          |
+| Section in `tournament-logic.js` | Main functions                                                                                                                                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                                                                                                                |
+| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                                                                                  |
+| Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament`                                                          |
+| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                                                                                      |
+| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`, `splitFromPointer`, `nudgeSplit`, `loadDisplayLayout`, `saveDisplayLayout`, `isTournamentStorageKey` |
+| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                                                                           |
+| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                                                                             |
+| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                                                                              |
+| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                                                                             |
+| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                                                                                 |
+| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`                                                                                           |
+| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                                                                                                                   |

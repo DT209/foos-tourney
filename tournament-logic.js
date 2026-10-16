@@ -2035,6 +2035,59 @@ globalThis.TournamentLogic = (() => {
     return url.toString();
   }
 
+  // Resizable areas: fractions, so the layout stays relative to the screen.
+  // columns = the tables' share of the width; rows = the leaderboard's share
+  // of the side column. Stored per browser as a display preference.
+  const DISPLAY_LAYOUT_KEY = 'foosTourney.displayLayout';
+  const DEFAULT_DISPLAY_LAYOUT = { columns: 0.58, rows: 0.5 };
+  const MIN_SPLIT = 0.2;
+  const MAX_SPLIT = 0.8;
+  const roundSplit = v => Math.round(v * 100) / 100;
+
+  function clampSplit(value) {
+    return roundSplit(Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, value)));
+  }
+
+  // pointer position -> fraction of a container starting at `start` with `size`.
+  function splitFromPointer(position, start, size) {
+    if (size <= 0) return DEFAULT_DISPLAY_LAYOUT.columns;
+    return clampSplit((position - start) / size);
+  }
+
+  // Keyboard resizing: 5% per arrow press.
+  function nudgeSplit(value, direction) {
+    return clampSplit(value + direction * 0.05);
+  }
+
+  function loadDisplayLayout(storage) {
+    let saved = null;
+    try {
+      saved = JSON.parse(storage.getItem(DISPLAY_LAYOUT_KEY));
+    } catch {
+      saved = null;
+    }
+    const pick = key =>
+      saved && typeof saved[key] === 'number' && isFinite(saved[key])
+        ? clampSplit(saved[key])
+        : DEFAULT_DISPLAY_LAYOUT[key];
+    return { columns: pick('columns'), rows: pick('rows') };
+  }
+
+  function saveDisplayLayout(storage, layout) {
+    try {
+      storage.setItem(DISPLAY_LAYOUT_KEY, JSON.stringify(layout));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // Whether a storage change can affect the open tournament (a null key means
+  // the whole storage was cleared).
+  function isTournamentStorageKey(key) {
+    return key === null || key === CURRENT_TOURNAMENT_KEY || key.startsWith(TOURNAMENT_KEY_PREFIX);
+  }
+
   // Results CSV for any tournament state (current or saved), or null when it
   // has no completed matches.
   function tournamentCsv(state) {
@@ -2156,6 +2209,14 @@ globalThis.TournamentLogic = (() => {
     nextAutoScroll,
     isDisplayModeUrl,
     displayModeUrl,
-    controlDeskUrl
+    controlDeskUrl,
+    DISPLAY_LAYOUT_KEY,
+    DEFAULT_DISPLAY_LAYOUT,
+    clampSplit,
+    splitFromPointer,
+    nudgeSplit,
+    loadDisplayLayout,
+    saveDisplayLayout,
+    isTournamentStorageKey
   };
 })();

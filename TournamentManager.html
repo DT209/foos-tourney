@@ -61,10 +61,19 @@
     .db-actions { display: flex; gap: 0.4em; }
     .db-btn { font-size: 0.65em; padding: 0.5em 0.9em; border-radius: 0.4em; border: 0.08em solid #2e3543; background: #181b22; color: #e5e7eb; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
     .db-btn:hover { border-color: #d12328; }
-    .db-grid { flex: 1; min-height: 0; display: grid; gap: 0.6em; grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr; grid-template-areas: "tables standings" "tables history"; }
+    .db-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, var(--db-left)) 0.7em minmax(0, var(--db-right)); }
+    .db-side { min-height: 0; display: flex; flex-direction: column; }
+    .db-standings { flex: var(--db-top) 1 0; }
+    .db-history { flex: var(--db-bottom) 1 0; }
+    .db-split { position: relative; touch-action: none; outline: none; }
+    .db-split::after { content: ""; position: absolute; border-radius: 1em; background: #2e3543; }
+    .db-split:hover::after, .db-split:focus-visible::after { background: #d12328; }
+    .db-split-cols { cursor: col-resize; }
+    .db-split-cols::after { left: 50%; top: 40%; width: 0.2em; height: 20%; transform: translateX(-50%); }
+    .db-split-rows { cursor: row-resize; height: 0.7em; flex: none; }
+    .db-split-rows::after { top: 50%; left: 40%; height: 0.2em; width: 20%; transform: translateY(-50%); }
     .db-panel { min-height: 0; display: flex; flex-direction: column; background: #181b22; border: 0.08em solid #2e3543; border-radius: 0.6em; padding: 0.6em; }
     .db-panel h2 { font-size: 0.85em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: #d12328; margin: 0 0 0.4em; }
-    .db-tables { grid-area: tables; } .db-standings { grid-area: standings; } .db-history { grid-area: history; }
     .db-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
     .db-scroll::-webkit-scrollbar { display: none; }
     .db-table-grid { display: grid; gap: 0.5em; grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); }
@@ -87,7 +96,10 @@
     .db-empty { font-size: 0.75em; color: #6b7280; font-style: italic; }
     @media (orientation: portrait), (max-width: 48em) {
       .db { height: auto; min-height: 100vh; overflow: visible; }
-      .db-grid { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "tables" "standings" "history"; }
+      .db-grid { grid-template-columns: 1fr; gap: 0.6em; }
+      .db-side { gap: 0.6em; }
+      .db-split { display: none; }
+      .db-standings, .db-history { flex: none; }
       .db-panel { max-height: 70vh; }
       .db-tables { max-height: none; }
     }
@@ -119,7 +131,8 @@
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
       getCompletedMatchesList, formatHistoryRow, tournamentCsv,
-      buildDisplayBoard, initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl
+      buildDisplayBoard, initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl,
+      DEFAULT_DISPLAY_LAYOUT, splitFromPointer, nudgeSplit, loadDisplayLayout, saveDisplayLayout, isTournamentStorageKey
     } = window.TournamentLogic;
 
     // e.g. "Fri, Oct 16, 11:40 PM" in the viewer's local time.
@@ -263,7 +276,52 @@
       return <div ref={ref} data-testid="auto-scroll" className="db-scroll">{children}</div>;
     }
 
-    function DisplayBoard({ board, title, started, onExit, onOpenWindow }) {
+    // A drag handle between two display areas. `axis` is 'columns' (drag left/
+    // right) or 'rows' (drag up/down); `containerRef` is the box it divides.
+    // Drag listeners sit on window, so the drag continues past the handle.
+    function Splitter({ axis, value, onChange, containerRef, label }) {
+      const horizontal = axis === 'columns';
+      const startDrag = (e) => {
+        e.preventDefault();
+        const rect = containerRef.current.getBoundingClientRect();
+        const move = (ev) => onChange(horizontal
+          ? splitFromPointer(ev.clientX, rect.left, rect.width)
+          : splitFromPointer(ev.clientY, rect.top, rect.height));
+        const stop = () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', stop);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', stop);
+      };
+      const keys = horizontal ? { ArrowLeft: -1, ArrowRight: 1 } : { ArrowUp: -1, ArrowDown: 1 };
+      const onKeyDown = (e) => {
+        if (!keys[e.key]) return;
+        e.preventDefault();
+        onChange(nudgeSplit(value, keys[e.key]));
+      };
+      return (
+        <div
+          data-testid={`split-${axis}`}
+          role="separator"
+          aria-orientation={horizontal ? 'vertical' : 'horizontal'}
+          aria-label={label}
+          aria-valuemin={20}
+          aria-valuemax={80}
+          aria-valuenow={Math.round(value * 100)}
+          tabIndex={0}
+          title="Drag to resize, double-click to reset"
+          className={`db-split db-split-${axis}`}
+          onPointerDown={startDrag}
+          onKeyDown={onKeyDown}
+          onDoubleClick={() => onChange(DEFAULT_DISPLAY_LAYOUT[axis])}
+        />
+      );
+    }
+
+    function DisplayBoard({ board, title, started, onExit, onOpenWindow, layout, onLayoutChange }) {
+      const gridRef = useRef(null);
+      const sideRef = useRef(null);
       return (
         <div data-testid="display-board" className="db">
           <div className="db-head">
@@ -276,7 +334,17 @@
               <button className="db-btn" onClick={onExit}>Exit Display</button>
             </div>
           </div>
-          <div className="db-grid">
+          <div
+            ref={gridRef}
+            data-testid="display-grid"
+            className="db-grid"
+            style={{
+              '--db-left': `${layout.columns}fr`,
+              '--db-right': `${1 - layout.columns}fr`,
+              '--db-top': layout.rows,
+              '--db-bottom': 1 - layout.rows
+            }}
+          >
             <section data-testid="display-tables" className="db-panel db-tables">
               <h2>Tables</h2>
               <AutoScroll>
@@ -306,6 +374,14 @@
                 </div>
               </AutoScroll>
             </section>
+            <Splitter
+              axis="columns"
+              value={layout.columns}
+              containerRef={gridRef}
+              label="Resize tables against leaderboard and history"
+              onChange={columns => onLayoutChange({ ...layout, columns })}
+            />
+            <div ref={sideRef} className="db-side">
             <section data-testid="display-standings" className="db-panel db-standings">
               <h2>Leaderboard</h2>
               <AutoScroll>
@@ -320,6 +396,13 @@
                 ))}
               </AutoScroll>
             </section>
+            <Splitter
+              axis="rows"
+              value={layout.rows}
+              containerRef={sideRef}
+              label="Resize leaderboard against match history"
+              onChange={rows => onLayoutChange({ ...layout, rows })}
+            />
             <section data-testid="display-history" className="db-panel db-history">
               <h2>Match History</h2>
               <AutoScroll>
@@ -333,6 +416,7 @@
                 ))}
               </AutoScroll>
             </section>
+            </div>
           </div>
         </div>
       );
@@ -353,7 +437,10 @@
       // control desk through storage events and never saves.
       const [isDisplayWindow] = useState(() => isDisplayModeUrl(window.location.search));
       const [displayMode, setDisplayMode] = useState(isDisplayWindow);
-      const [exportMenuId, setExportMenuId] = useState(null);
+      const [displayLayout, setDisplayLayout] = useState(() => loadDisplayLayout(storage));
+      useEffect(() => {
+        saveDisplayLayout(storage, displayLayout);
+      }, [storage, displayLayout]);
 
       // Tournament identity: a UUID, not a date - events often run past midnight.
       const [tournamentId, setTournamentId] = useState(restored.tournamentId);
@@ -455,7 +542,8 @@
       // --- DISPLAY WINDOW: follow the control desk's saves in other tabs/windows ---
       useEffect(() => {
         if (!isDisplayWindow) return undefined;
-        const onStorage = () => {
+        const onStorage = (e) => {
+          if (!isTournamentStorageKey(e.key)) return;
           const saved = loadCurrentTournament(storage);
           if (saved) applyTournament(restoreTournamentState(saved, { id: createTournamentId(), now: new Date() }));
         };
@@ -635,7 +723,6 @@
       // --- EXPORT / IMPORT ---
       // format: 'csv' (match results) or 'json' (the full tournament).
       const exportTournament = (id, format) => {
-        setExportMenuId(null);
         const state = id === tournamentId ? currentTournamentState() : loadTournament(storage, id);
         if (!state) {
           alert('That tournament could not be loaded.');
@@ -826,6 +913,8 @@
             started={formatStartedAt(startedAt)}
             onExit={() => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false))}
             onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href), '_blank')}
+            layout={displayLayout}
+            onLayoutChange={setDisplayLayout}
           />
         );
       }
@@ -1244,7 +1333,7 @@
 
             {savedTournaments && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div data-testid="saved-tournaments" className="bg-cfc-panel border border-cfc-border rounded-xl max-w-md w-full max-h-[90vh] flex flex-col shadow-2xl">
+                <div data-testid="saved-tournaments" className="bg-cfc-panel border border-cfc-border rounded-xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl">
                   <div className="p-5 pb-3 border-b border-cfc-border">
                     <h3 className="text-lg font-black text-white uppercase tracking-wide">Saved Tournaments</h3>
                     <p className="text-[11px] text-gray-500">Stored in this browser only.</p>
@@ -1260,7 +1349,7 @@
                         key={t.id}
                         data-testid="saved-tournament"
                         data-tournament-id={t.id}
-                        className="bg-cfc-dark border border-cfc-border rounded p-3 flex items-center justify-between gap-3"
+                        className="bg-cfc-dark border border-cfc-border rounded p-3 flex flex-wrap items-center justify-between gap-3"
                       >
                         <div className="min-w-0">
                           <div className="font-bold text-sm text-white truncate">{t.name}</div>
@@ -1269,32 +1358,21 @@
                             {t.playerCount} players · {t.matchCount} matches{t.bracketType ? ` · ${t.bracketType} bracket` : ''}
                           </div>
                         </div>
-                        <div className="flex gap-2 flex-shrink-0 items-center">
-                          {exportMenuId === t.id ? (
-                            <React.Fragment>
-                              <button
-                                onClick={() => exportTournament(t.id, 'csv')}
-                                title="Match results for spreadsheets"
-                                className="bg-green-200 hover:bg-green-300 text-green-900 text-xs px-2.5 py-1 rounded font-semibold"
-                              >
-                                CSV
-                              </button>
-                              <button
-                                onClick={() => exportTournament(t.id, 'json')}
-                                title="The full tournament, for importing"
-                                className="bg-sky-200 hover:bg-sky-300 text-sky-900 text-xs px-2.5 py-1 rounded font-semibold"
-                              >
-                                JSON
-                              </button>
-                            </React.Fragment>
-                          ) : (
-                            <button
-                              onClick={() => setExportMenuId(t.id)}
-                              className="bg-cfc-panelLight hover:bg-gray-700 border border-cfc-border text-gray-200 text-xs px-2.5 py-1 rounded"
-                            >
-                              Export
-                            </button>
-                          )}
+                        <div className="flex flex-wrap gap-2 items-center">
+                          <button
+                            onClick={() => exportTournament(t.id, 'csv')}
+                            title="Match results for spreadsheets"
+                            className="bg-green-200 hover:bg-green-300 text-green-900 text-xs px-2.5 py-1 rounded font-semibold whitespace-nowrap"
+                          >
+                            Export CSV
+                          </button>
+                          <button
+                            onClick={() => exportTournament(t.id, 'json')}
+                            title="The full tournament, for importing"
+                            className="bg-sky-200 hover:bg-sky-300 text-sky-900 text-xs px-2.5 py-1 rounded font-semibold whitespace-nowrap"
+                          >
+                            Export JSON
+                          </button>
                         {t.id === tournamentId ? (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-700 rounded px-2 py-0.5">Current</span>
                         ) : (

@@ -30,7 +30,7 @@ async function importFile(text, choice = 'Add to Saved Tournaments') {
 }
 
 describe('export options', () => {
-  it('Export offers CSV and JSON for every saved tournament', async () => {
+  it('every saved tournament has Export CSV and Export JSON buttons', async () => {
     app = await openApp();
     await app.type(NAME, 'Week One');
     await app.addAllLeaderboardPlayers();
@@ -40,10 +40,11 @@ describe('export options', () => {
     await app.click('Start New Tournament');
 
     const row = await app.openExportOptions(weekOne);
-    const options = await app.page.$$eval(`${row} button`, bs => bs.map(b => b.textContent.trim()));
-    assert.ok(options.includes('CSV') && options.includes('JSON'));
+    const buttons = await app.page.$$eval(`${row} button`, bs => bs.map(b => b.textContent.trim()));
+    assert.ok(buttons.includes('Export CSV') && buttons.includes('Export JSON'), 'both shown directly');
+    assert.equal(buttons.includes('Export'), false, 'no separate Export toggle');
 
-    const csv = await app.captureDownload('CSV', { within: row });
+    const csv = await app.captureDownload('Export CSV', { within: row });
     assert.equal(csv.mimeType, 'text/csv');
     assert.match(csv.name, /^Week_One_\d{4}-\d{2}-\d{2}\.csv$/);
     assert.ok(
@@ -51,10 +52,24 @@ describe('export options', () => {
       'results of the saved, not the open, tournament'
     );
 
-    await app.click('Export', { within: row });
-    const json = await app.captureDownload('JSON', { within: row });
+    const json = await app.captureDownload('Export JSON', { within: row });
     assert.equal(json.mimeType, 'application/json');
     assert.equal(JSON.parse(json.text).tournament.tournamentName, 'Week One');
+  });
+});
+
+describe('saved tournaments window', () => {
+  it('is wide enough for the export buttons and fills most of a phone screen', async () => {
+    app = await openApp();
+    await app.click('Saved Tournaments');
+    const desktop = await app.page.$eval(SAVED, e => e.getBoundingClientRect().width);
+    assert.ok(desktop >= 760, `desktop width ${desktop}px`);
+    await app.page.setViewport({ width: 390, height: 844 });
+    await app.pause(100);
+    const phone = await app.page.$eval(SAVED, e => e.getBoundingClientRect().toJSON());
+    assert.ok(phone.width >= 340, `phone width ${phone.width}px`);
+    const scrollWidth = await app.page.evaluate(() => document.documentElement.scrollWidth);
+    assert.ok(scrollWidth <= 390, 'no sideways scrolling');
   });
 });
 

@@ -299,19 +299,17 @@ async function openApp({
     currentTournamentId() {
       return page.evaluate(() => localStorage.getItem('foosTourney.currentTournament'));
     },
-    // Opens Saved Tournaments and the Export options on a tournament's row
-    // (the current one by default). Returns the row selector.
+    // Opens Saved Tournaments and returns the selector of a tournament's row
+    // (the current one by default), which has Export CSV / Export JSON buttons.
     async openExportOptions(id) {
       const tournamentId = id || (await this.currentTournamentId());
-      const row = `[data-tournament-id="${tournamentId}"]`;
       if (!(await page.$('[data-testid="saved-tournaments"]'))) await this.click('Saved Tournaments');
-      await this.click('Export', { within: row });
-      return row;
+      return `[data-tournament-id="${tournamentId}"]`;
     },
     // Exports a saved tournament (default: current) as 'CSV' or 'JSON'.
     async exportFromSaved(format, id) {
       const row = await this.openExportOptions(id);
-      const file = await this.captureDownload(format, { within: row });
+      const file = await this.captureDownload(`Export ${format}`, { within: row });
       await this.click('Close', { within: '[data-testid="saved-tournaments"]' });
       return file;
     },

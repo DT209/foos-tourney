@@ -144,8 +144,7 @@ describe('saved tournaments', () => {
       app.click('Import', { within: '[data-testid="saved-tournaments"]' }),
       /No visible, enabled button/
     );
-    await app.click('Export', { within: row });
-    const csv = await app.captureDownload('CSV', { within: row });
+    const csv = await app.captureDownload('Export CSV', { within: row });
     assert.equal(csv.mimeType, 'text/csv');
     assert.equal(csv.text.split('\n').length, 3, 'header + two scored games');
   });
