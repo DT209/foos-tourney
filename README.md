@@ -136,6 +136,9 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
   tournament. Its date (for exports and the CSV file name) is the local day it started.
 - Every tournament auto-saves to its own record in this browser's `localStorage`
   (`foosTourney.tournament.<uuid>`) after each change, and the current one resumes on reload.
+- **Recent players:** people from your previous 3 tournaments (by start time) who aren't on the club
+  leaderboard, such as guests, appear in a "Recent players" section of **Add from Leaderboard** and in
+  name suggestions. Typing one adds them directly, without the guest prompt.
 - **New Tournament** starts a fresh event and keeps the previous one. **Saved Tournaments** lists past
   events to reopen or delete. The current tournament can't be deleted.
 - CSV match IDs are prefixed with the tournament UUID, so exports never collide across events.

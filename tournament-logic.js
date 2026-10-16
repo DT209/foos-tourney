@@ -287,35 +287,84 @@ globalThis.TournamentLogic = (() => {
     }
   }
 
+  // Every readable saved tournament record. Corrupt records are skipped.
+  // Throws if storage itself can't be enumerated (callers catch).
+  function readTournamentRecords(storage) {
+    const records = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (!key.startsWith(TOURNAMENT_KEY_PREFIX)) continue;
+      let record = null;
+      try {
+        record = readRecord(storage, key, STORAGE_VERSION);
+      } catch {
+        // Corrupt record: skip it.
+      }
+      if (record) records.push(record);
+    }
+    return records;
+  }
+
   // Saved tournaments for the "Saved Tournaments" list, most recently saved first.
   function listTournaments(storage) {
     try {
-      const summaries = [];
-      for (let i = 0; i < storage.length; i++) {
-        const key = storage.key(i);
-        if (!key.startsWith(TOURNAMENT_KEY_PREFIX)) continue;
-        let record = null;
-        try {
-          record = readRecord(storage, key, STORAGE_VERSION);
-        } catch {
-          // Corrupt record: skip it.
-        }
-        if (!record) continue;
-        const { state } = record;
-        summaries.push({
+      return readTournamentRecords(storage)
+        .map(({ state, savedAt }) => ({
           id: state.tournamentId,
           name: state.tournamentName,
           startedAt: state.startedAt,
-          savedAt: record.savedAt,
+          savedAt,
           playerCount: state.players.length,
           matchCount: state.matches.length,
           bracketType: state.bracketData ? state.bracketData.type : null
-        });
-      }
-      return summaries.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+        }))
+        .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
     } catch {
       return [];
     }
+  }
+
+  // Players from the `count` most recently started tournaments other than
+  // `currentId`, de-duplicated case-insensitively, most recent first:
+  // [{ name, lastPlayed (startedAt), tournamentName }].
+  function recentTournamentPlayers(storage, currentId, count = 3) {
+    try {
+      const recent = readTournamentRecords(storage)
+        .map(r => r.state)
+        .filter(t => t.tournamentId !== currentId)
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+        .slice(0, count);
+      const seen = new Set();
+      const players = [];
+      recent.forEach(t => {
+        t.players.forEach(p => {
+          const name = p.name.trim();
+          if (!name || seen.has(name.toLowerCase())) return;
+          seen.add(name.toLowerCase());
+          players.push({ name, lastPlayed: t.startedAt, tournamentName: t.tournamentName });
+        });
+      });
+      return players;
+    } catch {
+      return [];
+    }
+  }
+
+  // The leaderboard plus recent players who aren't on it, flagged `recent`,
+  // so the picker, suggestions and add-player check all know them.
+  function withRecentPlayers(leaderboardPlayers, recentPlayers) {
+    const onLeaderboard = new Set(leaderboardPlayers.map(lp => normalizeName(lp.name)));
+    const extras = recentPlayers
+      .filter(rp => !onLeaderboard.has(normalizeName(rp.name)))
+      .map(rp => ({
+        name: rp.name,
+        singlesElo: null,
+        doublesElo: null,
+        recent: true,
+        lastPlayed: rp.lastPlayed,
+        tournamentName: rp.tournamentName
+      }));
+    return [...leaderboardPlayers, ...extras];
   }
 
   function deleteTournament(storage, id) {
@@ -1903,6 +1952,8 @@ globalThis.TournamentLogic = (() => {
     listTournaments,
     deleteTournament,
     tournamentExists,
+    recentTournamentPlayers,
+    withRecentPlayers,
     getBrowserStorage,
     // export / import
     serializeTournamentExport,

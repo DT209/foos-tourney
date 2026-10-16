@@ -191,16 +191,16 @@ flowchart TD
 
 ## Module sections and main functions
 
-| Section in `tournament-logic.js` | Main functions                                                                                                                                  |
-| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                      |
-| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                        |
-| Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `deleteTournament`                |
-| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                            |
-| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                 |
-| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                   |
-| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                    |
-| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                   |
-| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                       |
-| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables` |
-| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                         |
+| Section in `tournament-logic.js` | Main functions                                                                                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                                                       |
+| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                         |
+| Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament` |
+| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                             |
+| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                  |
+| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                    |
+| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                     |
+| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                    |
+| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                        |
+| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`                                  |
+| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                                                          |

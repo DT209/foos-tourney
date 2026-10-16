@@ -56,13 +56,13 @@
   <script src="tournament-logic.js"></script>
 
   <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const { useState, useEffect, useRef, useMemo } = React;
 
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
       sanitizeTypedText, submitPin, forgetPin, getLeaderboardInfo,
       createTournamentId, newTournamentState, restoreTournamentState, tournamentDate,
-      saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, tournamentExists, getBrowserStorage,
+      saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, tournamentExists, recentTournamentPlayers, withRecentPlayers, getBrowserStorage,
       serializeTournamentExport, tournamentExportFileName, parseTournamentExport, storeImportedTournament, downloadText,
       fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
@@ -247,6 +247,15 @@
       const [leaderboardPlayers, setLeaderboardPlayers] = useState(FALLBACK_LEADERBOARD_PLAYERS);
       const [leaderboardStatus, setLeaderboardStatus] = useState('cached');
 
+      // Players from the previous 3 tournaments who aren't on the club
+      // leaderboard (e.g. guests). Recomputed when the tournament or the
+      // saved list changes, not on every keystroke.
+      const recentPlayers = useMemo(
+        () => recentTournamentPlayers(storage, tournamentId),
+        [storage, tournamentId, savedTournaments]
+      );
+      const knownPlayers = withRecentPlayers(leaderboardPlayers, recentPlayers);
+
       useEffect(() => {
         let cancelled = false;
         fetchLeaderboardPlayers()
@@ -330,7 +339,7 @@
 
       const handleAddPlayer = (e) => {
         e.preventDefault();
-        const check = checkNewPlayerName(newPlayerName, players, leaderboardPlayers);
+        const check = checkNewPlayerName(newPlayerName, players, knownPlayers);
         if (check.error) {
           alert(check.error);
           return;
@@ -880,7 +889,7 @@
 
             {pendingCustomPlayerName !== null && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                <div data-testid="guest-confirm" className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
                   <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
                     <span>⚠️</span> Not Found on Leaderboard
                   </h3>
@@ -906,7 +915,32 @@
             )}
 
             {showLeaderboardPicker && (() => {
-              const pickerView = getLeaderboardPickerView(players, leaderboardPlayers, pickerSelection);
+              const pickerView = getLeaderboardPickerView(players, knownPlayers, pickerSelection);
+              const recentRows = pickerView.rows.filter(r => r.player.recent);
+              const renderPickerRow = ({ player: lp, alreadyAdded, checked }) => (
+                <label
+                  key={lp.name}
+                  data-testid="picker-option"
+                  data-name={lp.name}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded border text-sm transition ${
+                    alreadyAdded
+                      ? 'bg-cfc-dark/40 border-cfc-border/40 text-gray-500 cursor-not-allowed'
+                      : checked
+                        ? 'bg-emerald-950/40 border-emerald-700 text-white cursor-pointer'
+                        : 'bg-cfc-dark border-cfc-border text-gray-200 hover:border-cfc-red cursor-pointer'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={alreadyAdded}
+                    onChange={() => togglePickerName(lp.name)}
+                    className="w-4 h-4 rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0"
+                  />
+                  <span className="truncate flex-1">{lp.name}</span>
+                  {alreadyAdded && <span className="text-[10px] font-mono text-gray-500">On roster</span>}
+                </label>
+              );
               const { available, allSelected } = pickerView;
               return (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -939,33 +973,21 @@
                       </div>
                     </div>
 
-                    <div className="overflow-y-auto flex-1 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {pickerView.rows.map(({ player: lp, alreadyAdded, checked }) => {
-                        return (
-                          <label
-                            key={lp.name}
-                            data-testid="picker-option"
-                            data-name={lp.name}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded border text-sm transition ${
-                              alreadyAdded
-                                ? 'bg-cfc-dark/40 border-cfc-border/40 text-gray-500 cursor-not-allowed'
-                                : checked
-                                  ? 'bg-emerald-950/40 border-emerald-700 text-white cursor-pointer'
-                                  : 'bg-cfc-dark border-cfc-border text-gray-200 hover:border-cfc-red cursor-pointer'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              disabled={alreadyAdded}
-                              onChange={() => togglePickerName(lp.name)}
-                              className="w-4 h-4 rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0"
-                            />
-                            <span className="truncate flex-1">{lp.name}</span>
-                            {alreadyAdded && <span className="text-[10px] font-mono text-gray-500">On roster</span>}
-                          </label>
-                        );
-                      })}
+                    <div className="overflow-y-auto flex-1 p-3 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {pickerView.rows.filter(r => !r.player.recent).map(renderPickerRow)}
+                      </div>
+                      {recentRows.length > 0 && (
+                        <div data-testid="picker-recent" className="space-y-2 pt-2 border-t border-cfc-border/60">
+                          <div>
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider">Recent players</h4>
+                            <p className="text-[10px] text-gray-500">From your last 3 tournaments, not on the club leaderboard.</p>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {recentRows.map(renderPickerRow)}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div className="p-4 border-t border-cfc-border flex gap-2">
@@ -1543,7 +1565,7 @@
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         />
                         {showPlayerSuggestions && !editingLocked && (() => {
-                          const matches = getPlayerSuggestions(leaderboardPlayers, newPlayerName);
+                          const matches = getPlayerSuggestions(knownPlayers, newPlayerName);
                           if (matches.length === 0) return null;
                           return (
                             <div className="absolute z-20 mt-1 w-full bg-cfc-dark border border-cfc-border rounded shadow-2xl max-h-52 overflow-y-auto">
