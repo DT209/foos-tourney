@@ -69,6 +69,20 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 - **New Tournament** starts a fresh event and keeps the previous one. **Saved Tournaments** lists past
   events to reopen or delete. The current tournament can't be deleted.
 - CSV match IDs are prefixed with the tournament UUID, so exports never collide across events.
+
+## Exporting and importing tournaments
+
+- **Export** on any row in **Saved Tournaments** downloads that tournament (roster, matches, bracket,
+  settings) as a `.json` file: `{ format: "foos-tourney", version: 1, exportedAt, tournament }`.
+- **Import…** in Saved Tournaments loads an export **from a file** and shows what it contains, then:
+  - **Add to Saved Tournaments** adds it without switching to it. If the same tournament is already
+    saved, choose **Replace Saved Copy** or **Keep Both** (the copy gets a new id and "(copy)" in its
+    name).
+  - **View Read-only** shows it with editing disabled and saves nothing. **Close View** (or a reload)
+    returns to your own tournament.
+- Imported files are validated field by field like saved data. Other JSON files and exports from a
+  newer version are rejected with a message.
+- **From Firebase** is listed as an import source but not built yet.
 - Private browsing or blocked site data disables auto-save, and the footer says so.
 - Saves from before tournaments had ids are migrated automatically on first load.
 

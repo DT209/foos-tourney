@@ -189,12 +189,12 @@ describe('downloadCsv', () => {
     };
   }
 
-  it('clicks a temporary data-URI link and removes it', () => {
+  it('clicks a temporary data-URI link and removes it; # is encoded so the file is not cut short', () => {
     const doc = fakeDocument();
-    L.downloadCsv('a,b\n"c d"', 'out.csv', doc);
+    L.downloadCsv('a,b\n"c #d"', 'out.csv', doc);
     assert.deepEqual(doc.log, ['create:a', 'append', 'click', 'remove']);
     assert.deepEqual(doc.link.attrs, {
-      href: 'data:text/csv;charset=utf-8,a,b%0A%22c%20d%22',
+      href: 'data:text/csv;charset=utf-8,a%2Cb%0A%22c%20%23d%22',
       download: 'out.csv'
     });
   });

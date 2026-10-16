@@ -56,13 +56,14 @@
   <script src="tournament-logic.js"></script>
 
   <script type="text/babel">
-    const { useState, useEffect } = React;
+    const { useState, useEffect, useRef } = React;
 
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
       sanitizeTypedText, submitPin, forgetPin, getLeaderboardInfo,
       createTournamentId, newTournamentState, restoreTournamentState, tournamentDate,
-      saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, getBrowserStorage,
+      saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, tournamentExists, getBrowserStorage,
+      serializeTournamentExport, tournamentExportFileName, parseTournamentExport, storeImportedTournament, downloadText,
       fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
       countActivePlayers, hasPausedPlayers, computeStandings,
@@ -273,14 +274,26 @@
       const [showWinnerModal, setShowWinnerModal] = useState(false);
       const [showPausedWarningModal, setShowPausedWarningModal] = useState(false);
 
-      // --- AUTO-SAVE ---
+      // Import dialog: null, { step: 'source' } or { step: 'review', tournament, exists }.
+      const [importState, setImportState] = useState(null);
+      const importFileInput = useRef(null);
+      // Read-only view of an imported file: { name, previous } where previous is
+      // our own tournament, restored by Close View. Nothing is saved meanwhile.
+      const [readOnlyView, setReadOnlyView] = useState(null);
+      const editingLocked = isLocked || readOnlyView !== null;
+
+      // The persisted tournament as one object (for saving and exporting).
+      const currentTournamentState = () => ({
+        tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
+        players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
+        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin
+      });
+
+      // --- AUTO-SAVE (paused while viewing a file read-only) ---
       useEffect(() => {
-        setIsSaved(saveTournament(storage, {
-          tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
-          players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin
-        }));
-      }, [storage, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
+        if (readOnlyView) return;
+        setIsSaved(saveTournament(storage, currentTournamentState()));
+      }, [storage, readOnlyView, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
           teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin]);
 
@@ -417,6 +430,7 @@
         setPendingCustomPlayerName(null);
         setShowNewTournamentWarning(false);
         setSavedTournaments(null);
+        setImportState(null);
         setShowWinnerModal(false);
       };
 
@@ -445,6 +459,61 @@
           deleteTournament(storage, summary.id);
           setSavedTournaments(listTournaments(storage));
         }
+      };
+
+      // --- EXPORT / IMPORT ---
+      const exportTournament = (id) => {
+        const state = id === tournamentId ? currentTournamentState() : loadTournament(storage, id);
+        if (!state) {
+          alert('That tournament could not be loaded.');
+          return;
+        }
+        downloadText(serializeTournamentExport(state), tournamentExportFileName(state), 'application/json');
+      };
+
+      const handleImportFile = (e) => {
+        const file = e.target.files[0];
+        e.target.value = ''; // lets the same file be chosen again
+        if (!file) return;
+        file.text().then(text => {
+          const result = parseTournamentExport(text);
+          if (result.error) {
+            alert(result.error);
+            return;
+          }
+          setImportState({
+            step: 'review',
+            tournament: result.tournament,
+            exists: tournamentExists(storage, result.tournament.tournamentId)
+          });
+        });
+      };
+
+      // mode: 'add', 'replace' or 'copy' (see storeImportedTournament).
+      const importIntoSaved = (mode) => {
+        const { tournament } = importState;
+        const result = storeImportedTournament(storage, tournament, { mode });
+        if (result.error) {
+          alert(result.error);
+          return;
+        }
+        // Replacing the open tournament: show the imported data, or the next
+        // auto-save would overwrite it with what was on screen.
+        if (mode === 'replace' && tournament.tournamentId === tournamentId) applyTournament(tournament);
+        setImportState(null);
+        setSavedTournaments(listTournaments(storage));
+      };
+
+      const viewReadOnly = () => {
+        const previous = currentTournamentState();
+        const { tournament } = importState;
+        applyTournament(tournament);
+        setReadOnlyView({ name: tournament.tournamentName, previous });
+      };
+
+      const closeReadOnlyView = () => {
+        applyTournament(readOnlyView.previous);
+        setReadOnlyView(null);
       };
 
       const completedMatchesList = getCompletedMatchesList(matches, bracketData, tournamentId);
@@ -620,13 +689,13 @@
 
                 <button
                   onClick={handleDrawBracketsClick}
-                  disabled={isLocked}
+                  disabled={editingLocked}
                   className="bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-2 text-xs uppercase tracking-widest rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                 >
                   🏆 Draw Brackets
                 </button>
 
-                {!isLocked ? (
+                {readOnlyView ? null : !isLocked ? (
                   <button
                     onClick={() => setShowPinModal(true)}
                     className="bg-gray-900 hover:bg-black text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
@@ -669,13 +738,13 @@
 
                     <button
                       onClick={() => { setIsMobileMenuOpen(false); handleDrawBracketsClick(); }}
-                      disabled={isLocked}
+                      disabled={editingLocked}
                       className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-3 text-xs uppercase tracking-widest rounded shadow transition text-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                     >
                       🏆 Draw Brackets
                     </button>
 
-                    {!isLocked ? (
+                    {readOnlyView ? null : !isLocked ? (
                       <button
                         onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
                         className="w-full bg-gray-900 hover:bg-black text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center border border-gray-700"
@@ -706,7 +775,19 @@
           {/* Main Dashboard Container */}
           <main className="max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-8 flex-1">
 
-            {isLocked && (
+            {readOnlyView && (
+              <div data-testid="read-only-banner" className="bg-sky-950/60 border border-sky-700 text-sky-100 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center justify-between gap-3">
+                <span><span>📄</span> Read-only view of &ldquo;{readOnlyView.name}&rdquo; from a file. Nothing is saved.</span>
+                <button
+                  onClick={closeReadOnlyView}
+                  className="bg-sky-700 hover:bg-sky-600 text-white px-3 py-1 rounded font-bold flex-shrink-0"
+                >
+                  Close View
+                </button>
+              </div>
+            )}
+
+            {isLocked && !readOnlyView && (
               <div className="bg-rose-950/60 border border-rose-700 text-rose-200 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center gap-2">
                 <span>👁</span> View Only Mode — editing is disabled. Click "View Only (Unlock)" and enter the PIN to resume editing.
               </div>
@@ -985,10 +1066,17 @@
                             {t.playerCount} players · {t.matchCount} matches{t.bracketType ? ` · ${t.bracketType} bracket` : ''}
                           </div>
                         </div>
+                        <div className="flex gap-2 flex-shrink-0 items-center">
+                          <button
+                            onClick={() => exportTournament(t.id)}
+                            className="bg-cfc-panelLight hover:bg-gray-700 border border-cfc-border text-gray-200 text-xs px-2.5 py-1 rounded"
+                          >
+                            Export
+                          </button>
                         {t.id === tournamentId ? (
                           <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-700 rounded px-2 py-0.5">Current</span>
                         ) : (
-                          <div className="flex gap-2 flex-shrink-0">
+                          <React.Fragment>
                             <button
                               onClick={() => openTournament(t.id)}
                               className="bg-cfc-red hover:bg-cfc-redHover text-white text-xs px-2.5 py-1 rounded font-semibold"
@@ -1001,19 +1089,110 @@
                             >
                               Delete
                             </button>
-                          </div>
+                          </React.Fragment>
                         )}
+                        </div>
                       </li>
                     ))}
                   </ul>
-                  <div className="p-3 border-t border-cfc-border">
+                  <div className="p-3 border-t border-cfc-border flex gap-2">
+                    <button
+                      onClick={() => setImportState({ step: 'source' })}
+                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold"
+                    >
+                      Import…
+                    </button>
                     <button
                       onClick={() => setSavedTournaments(null)}
-                      className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
+                      className="flex-1 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
                     >
                       Close
                     </button>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {importState && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div data-testid="import-dialog" className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-black text-white uppercase tracking-wide">Import Tournament</h3>
+                  <input
+                    ref={importFileInput}
+                    data-testid="import-file-input"
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={handleImportFile}
+                    className="hidden"
+                  />
+                  {importState.step === 'source' ? (
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => importFileInput.current.click()}
+                        className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border rounded p-3 text-left"
+                      >
+                        <span className="block text-sm font-bold text-white">📁 From a file</span>
+                        <span className="block text-[11px] text-gray-400">A .json file exported from Saved Tournaments.</span>
+                      </button>
+                      <button
+                        data-testid="import-source-firebase"
+                        disabled
+                        className="w-full bg-cfc-dark border border-cfc-border rounded p-3 text-left opacity-50 cursor-not-allowed"
+                      >
+                        <span className="block text-sm font-bold text-white">☁️ From Firebase</span>
+                        <span className="block text-[11px] text-gray-400">Coming soon.</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-cfc-dark border border-cfc-border rounded p-3">
+                        <div className="font-bold text-sm text-white">{importState.tournament.tournamentName}</div>
+                        <div className="text-[11px] text-gray-400">Started {formatStartedAt(importState.tournament.startedAt)}</div>
+                        <div className="text-[11px] text-gray-500">
+                          {importState.tournament.players.length} players · {importState.tournament.matches.length} matches
+                          {importState.tournament.bracketData ? ` · ${importState.tournament.bracketData.type} bracket` : ''}
+                        </div>
+                      </div>
+                      {importState.exists ? (
+                        <React.Fragment>
+                          <p className="text-xs text-amber-300">This tournament is already saved in this browser.</p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => importIntoSaved('replace')}
+                              className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold"
+                            >
+                              Replace Saved Copy
+                            </button>
+                            <button
+                              onClick={() => importIntoSaved('copy')}
+                              className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs py-2 rounded font-semibold"
+                            >
+                              Keep Both
+                            </button>
+                          </div>
+                        </React.Fragment>
+                      ) : (
+                        <button
+                          onClick={() => importIntoSaved('add')}
+                          className="w-full bg-cfc-red hover:bg-cfc-redHover text-white text-xs py-2 rounded font-semibold"
+                        >
+                          Add to Saved Tournaments
+                        </button>
+                      )}
+                      <button
+                        onClick={viewReadOnly}
+                        className="w-full bg-sky-800 hover:bg-sky-700 text-white text-xs py-2 rounded font-semibold"
+                      >
+                        View Read-only
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setImportState(null)}
+                    className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </div>
             )}
@@ -1247,7 +1426,7 @@
                           value={tournamentName}
                           onChange={e => setTournamentName(sanitizeTypedText(e.target.value, 35))}
                           placeholder="e.g. Friday Night Open"
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
                         />
                         <p data-testid="tournament-started" className="text-[11px] text-gray-500 mt-1">Started {formatStartedAt(startedAt)}</p>
@@ -1258,7 +1437,7 @@
                           value={tableCount}
                           data-testid="table-count-select"
                           onChange={e => setTableCount(parseInt(e.target.value, 10))}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         >
                           {Array.from({ length: 10 }, (_, i) => i + 1).map(num => (
@@ -1272,7 +1451,7 @@
                           value={format}
                           data-testid="format-select"
                           onChange={e => setFormat(e.target.value)}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         >
                           <option value="2v2">2v2 (Doubles)</option>
@@ -1286,7 +1465,7 @@
                           value={maxGames}
                           data-testid="max-games-select"
                           onChange={e => setMaxGames(Number(e.target.value))}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         >
                           <option value={1}>Best of 1</option>
@@ -1300,7 +1479,7 @@
                     <div className="pt-2">
                       <button
                         onClick={handleDrawMatch}
-                        disabled={isLocked}
+                        disabled={editingLocked}
                         className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                       >
                         🎲 Draw New Match
@@ -1312,14 +1491,14 @@
                       <div className="flex gap-2">
                         <button
                           onClick={() => setShowClearMatchesWarning(true)}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="flex-1 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Clear Matches
                         </button>
                         <button
                           onClick={() => setShowNewTournamentWarning(true)}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="flex-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/80 text-rose-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           New Tournament
@@ -1327,7 +1506,7 @@
                       </div>
                       <button
                         onClick={openSavedTournaments}
-                        disabled={isLocked}
+                        disabled={editingLocked}
                         className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Saved Tournaments
@@ -1354,11 +1533,11 @@
                           onFocus={() => setShowPlayerSuggestions(true)}
                           onBlur={() => setTimeout(() => setShowPlayerSuggestions(false), 150)}
                           maxLength="25"
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           autoComplete="off"
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         />
-                        {showPlayerSuggestions && !isLocked && (() => {
+                        {showPlayerSuggestions && !editingLocked && (() => {
                           const matches = getPlayerSuggestions(leaderboardPlayers, newPlayerName);
                           if (matches.length === 0) return null;
                           return (
@@ -1377,7 +1556,7 @@
                           );
                         })()}
                       </div>
-                      <button type="submit" disabled={isLocked} className="bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-white px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed">
+                      <button type="submit" disabled={editingLocked} className="bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-white px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed">
                         Add Player
                       </button>
                     </form>
@@ -1388,7 +1567,7 @@
                       </p>
                       <button
                         onClick={openLeaderboardPicker}
-                        disabled={isLocked}
+                        disabled={editingLocked}
                         className="bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-gray-200 px-3 py-1 rounded text-[11px] font-bold uppercase tracking-wider transition flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         + Add from Leaderboard
@@ -1406,11 +1585,11 @@
                                 value={editingName}
                                 maxLength="25"
                                 onChange={e => setEditingName(e.target.value)}
-                                disabled={isLocked}
+                                disabled={editingLocked}
                                 className="w-full min-w-0 bg-cfc-panel border border-cfc-border text-xs px-2 py-1 rounded text-white disabled:opacity-50"
                                 autoFocus
                               />
-                              <button onClick={() => savePlayerName(p.id)} disabled={isLocked} className="text-xs bg-emerald-700 px-2 py-1 rounded text-white flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                              <button onClick={() => savePlayerName(p.id)} disabled={editingLocked} className="text-xs bg-emerald-700 px-2 py-1 rounded text-white flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -1434,7 +1613,7 @@
                           <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0">
                             <button
                               onClick={() => togglePaid(p.id)}
-                              disabled={isLocked}
+                              disabled={editingLocked}
                               className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
                             >
                               {p.paid ? 'Paid' : 'Unpaid'}
@@ -1442,7 +1621,7 @@
 
                             <button
                               onClick={() => toggleActive(p.id)}
-                              disabled={isLocked}
+                              disabled={editingLocked}
                               className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
                             >
                               {p.active ? 'Active' : 'Paused'}
@@ -1450,7 +1629,7 @@
 
                             <button
                               onClick={() => startEditingPlayer(p)}
-                              disabled={isLocked}
+                              disabled={editingLocked}
                               className="text-xs text-gray-400 hover:text-white px-1 disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Edit Name"
                             >
@@ -1459,7 +1638,7 @@
 
                             <button
                               onClick={() => handleRemovePlayer(p.id)}
-                              disabled={isLocked}
+                              disabled={editingLocked}
                               className="text-xs text-rose-400 hover:text-rose-300 px-1 disabled:opacity-40 disabled:cursor-not-allowed"
                               title="Delete Player"
                             >
@@ -1482,28 +1661,28 @@
                                 <div className="absolute right-0 top-full mt-1 z-40 bg-cfc-panel border border-cfc-border rounded-lg shadow-2xl p-2 flex flex-col gap-1.5 w-max">
                                   <button
                                     onClick={() => { togglePaid(p.id); setOpenActionMenuId(null); }}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
                                   >
                                     {p.paid ? 'Paid' : 'Unpaid'}
                                   </button>
                                   <button
                                     onClick={() => { toggleActive(p.id); setOpenActionMenuId(null); }}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
                                   >
                                     {p.active ? 'Active' : 'Paused'}
                                   </button>
                                   <button
                                     onClick={() => { startEditingPlayer(p); setOpenActionMenuId(null); }}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className="text-xs text-gray-300 hover:text-white px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     ✏️ Edit Name
                                   </button>
                                   <button
                                     onClick={() => { handleRemovePlayer(p.id); setOpenActionMenuId(null); }}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     🗑️ Delete Player
@@ -1540,7 +1719,7 @@
                               {activeMatch && (
                                 <button
                                   onClick={() => handleDeleteMatch(activeMatch.id)}
-                                  disabled={isLocked}
+                                  disabled={editingLocked}
                                   className="text-xs bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 px-2 py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   🗑️ Delete
@@ -1574,7 +1753,7 @@
                                       value={game.t1}
                                       onChange={e => handleGameScoreChange(activeMatch.id, gIdx, 't1', e.target.value)}
                                       placeholder=""
-                                      disabled={isLocked}
+                                      disabled={editingLocked}
                                       className="w-16 bg-cfc-dark border-2 border-sky-400 text-center rounded py-1 text-sky-200 font-bold focus:outline-none focus:border-sky-300 disabled:opacity-50"
                                     />
                                     <span className="text-gray-600 font-bold">-</span>
@@ -1583,7 +1762,7 @@
                                       value={game.t2}
                                       onChange={e => handleGameScoreChange(activeMatch.id, gIdx, 't2', e.target.value)}
                                       placeholder=""
-                                      disabled={isLocked}
+                                      disabled={editingLocked}
                                       className="w-16 bg-cfc-dark border-2 border-sky-400 text-center rounded py-1 text-sky-200 font-bold focus:outline-none focus:border-sky-300 disabled:opacity-50"
                                     />
                                   </div>
@@ -1596,7 +1775,7 @@
                                     type="checkbox"
                                     checked={activeMatch.isHandicap}
                                     onChange={e => handleHandicapToggle(activeMatch.id, e.target.checked)}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className="rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0 disabled:opacity-50"
                                   />
                                   Handicap / Manual Override
@@ -1606,7 +1785,7 @@
                                   <select
                                     value={activeMatch.overrideWinner || 1}
                                     onChange={e => handleOverrideWinnerChange(activeMatch.id, e.target.value)}
-                                    disabled={isLocked}
+                                    disabled={editingLocked}
                                     className="bg-cfc-dark border border-cfc-border rounded px-2 py-1 text-cfc-red font-semibold disabled:opacity-50"
                                   >
                                     <option value="1">Team 1 Wins</option>
@@ -1617,8 +1796,8 @@
 
                               <button
                                 onClick={() => completeMatch(activeMatch.id)}
-                                disabled={!calculatedWinner || isLocked}
-                                className={`w-full py-2.5 rounded font-bold text-xs uppercase tracking-wider transition ${calculatedWinner && !isLocked ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md' : 'bg-cfc-dark border border-cfc-border text-gray-600 cursor-not-allowed'}`}
+                                disabled={!calculatedWinner || editingLocked}
+                                className={`w-full py-2.5 rounded font-bold text-xs uppercase tracking-wider transition ${calculatedWinner && !editingLocked ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md' : 'bg-cfc-dark border border-cfc-border text-gray-600 cursor-not-allowed'}`}
                               >
                                 {calculatedWinner ? `Finish Match (Winner: Team ${calculatedWinner})` : 'Enter Winning Scores to Finish'}
                               </button>
@@ -1734,7 +1913,7 @@
                     <h3 className="text-xl font-bold text-white uppercase tracking-wider">No Active Playoff Bracket</h3>
                     <button
                       onClick={handleDrawBracketsClick}
-                      disabled={isLocked}
+                      disabled={editingLocked}
                       className="bg-cfc-red hover:bg-cfc-redHover text-white font-bold px-5 py-2.5 rounded text-xs uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                     >
                       Draw Bracket Stage
@@ -1763,7 +1942,7 @@
                         )}
                         <button
                           onClick={handleDrawBracketsClick}
-                          disabled={isLocked}
+                          disabled={editingLocked}
                           className="flex-1 md:flex-none bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-200 font-bold px-4 py-2 rounded text-xs transition uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Reset / Redraw Brackets
@@ -1799,7 +1978,7 @@
                                   onHandicapToggle={(checked) => handleBracketHandicapToggle(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, checked)}
                                   onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, winner)}
                                   onConfirm={() => handleConfirmBracketMatch(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx)}
-                                  locked={isLocked}
+                                  locked={editingLocked}
                                 />
                               ) : (
                                 <p className="text-gray-500 text-xs italic py-8 text-center uppercase tracking-wider">
@@ -1837,7 +2016,7 @@
                                   onHandicapToggle={(checked) => handleBracketHandicapToggle('winners', rIdx, mIdx, checked)}
                                   onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('winners', rIdx, mIdx, winner)}
                                   onConfirm={() => handleConfirmBracketMatch('winners', rIdx, mIdx)}
-                                  locked={isLocked}
+                                  locked={editingLocked}
                                 />
                               ))}
                             </div>
@@ -1858,7 +2037,7 @@
                                     onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, 0, checked)}
                                     onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('grandFinals', 0, 0, winner)}
                                     onConfirm={() => handleConfirmBracketMatch('grandFinals', 0, 0)}
-                                    locked={isLocked}
+                                    locked={editingLocked}
                                   />
                                 </div>
                               </div>
@@ -1876,7 +2055,7 @@
                                     onHandicapToggle={(checked) => handleBracketHandicapToggle('thirdPlace', 0, 0, checked)}
                                     onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('thirdPlace', 0, 0, winner)}
                                     onConfirm={() => handleConfirmBracketMatch('thirdPlace', 0, 0)}
-                                    locked={isLocked}
+                                    locked={editingLocked}
                                   />
                                 </div>
                               </div>
@@ -1903,7 +2082,7 @@
                                     onHandicapToggle={(checked) => handleBracketHandicapToggle('losers', rIdx, mIdx, checked)}
                                     onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('losers', rIdx, mIdx, winner)}
                                     onConfirm={() => handleConfirmBracketMatch('losers', rIdx, mIdx)}
-                                    locked={isLocked}
+                                    locked={editingLocked}
                                   />
                                 ))}
                               </div>
@@ -1924,7 +2103,7 @@
                                   onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, gfIdx, checked)}
                                   onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('grandFinals', 0, gfIdx, winner)}
                                   onConfirm={() => handleConfirmBracketMatch('grandFinals', 0, gfIdx)}
-                                  locked={isLocked}
+                                  locked={editingLocked}
                                 />
                               </div>
                             ))}
@@ -1946,7 +2125,7 @@
                                 onHandicapToggle={(checked) => handleBracketHandicapToggle('winners', bracketData.winnersRounds.length - 1, 0, checked)}
                                 onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('winners', bracketData.winnersRounds.length - 1, 0, winner)}
                                 onConfirm={() => handleConfirmBracketMatch('winners', bracketData.winnersRounds.length - 1, 0)}
-                                locked={isLocked}
+                                locked={editingLocked}
                               />
                             </div>
                           </div>

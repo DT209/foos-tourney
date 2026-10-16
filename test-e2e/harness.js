@@ -10,6 +10,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const os = require('node:os');
 const puppeteer = require('puppeteer-core');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -256,16 +257,35 @@ async function openApp({
       await card.$eval('[data-testid="confirm-match"]', b => b.click());
       await pause();
     },
-    // Captures the CSV export instead of downloading it.
-    async exportCsv() {
+    // Clicks `label` and captures the file the page tries to download.
+    async captureDownload(label, options) {
       await page.evaluate(() => {
+        window.__download = null;
         HTMLAnchorElement.prototype.click = function () {
           window.__download = { href: this.getAttribute('href'), name: this.getAttribute('download') };
         };
       });
-      await this.click('CSV Export');
+      await this.click(label, options);
       const download = await page.evaluate(() => window.__download);
-      return { name: download.name, csv: decodeURI(download.href.replace('data:text/csv;charset=utf-8,', '')) };
+      if (!download) throw new Error(`Clicking "${label}" did not download anything`);
+      const comma = download.href.indexOf(',');
+      return {
+        name: download.name,
+        mimeType: download.href.slice(5, download.href.indexOf(';')),
+        text: decodeURIComponent(download.href.slice(comma + 1))
+      };
+    },
+    async exportCsv() {
+      const { name, text } = await this.captureDownload('CSV Export');
+      return { name, csv: text };
+    },
+    // Writes `text` to a temp file and picks it in the import dialog's file input.
+    async chooseImportFile(text) {
+      const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'foos-')), 'import.json');
+      fs.writeFileSync(file, text);
+      const input = await page.$('[data-testid="import-file-input"]');
+      await input.uploadFile(file); // fires the input's change event
+      await pause(150);
     },
     storageKeys() {
       return page.evaluate(() => Object.keys(localStorage));

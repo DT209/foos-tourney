@@ -58,6 +58,14 @@ Calgary Foosball Club tournament manager. See `README.md` for layout, deploy and
   `FIELD_VALIDATORS` if its type differs from the default's, add it to `applyTournament` and the
   auto-save effect (object and dependency list) in the component, and cover it in `test/persistence.test.js`.
 - Bump `STORAGE_VERSION` only for incompatible shape changes, and add a migration when you do.
+- Export files use `EXPORT_FORMAT`/`EXPORT_VERSION` (`serializeTournamentExport`,
+  `parseTournamentExport`). Bump `EXPORT_VERSION` for incompatible changes. Newer files are rejected,
+  older ones must keep importing.
+- Imports never switch the current tournament (`storeImportedTournament` writes the record only). The
+  read-only view swaps the on-screen state, pauses auto-save, and restores the previous state on Close
+  View.
+- Downloads go through `downloadText`, which percent-encodes the whole payload. `encodeURI` leaves `#`,
+  which truncates `data:` URLs.
 - Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams
   by `id`, never by reference.
 
@@ -73,5 +81,8 @@ These match the README's Tournaments, Admin lock and Club leaderboard sections. 
   Elsewhere the page uses the bundled snapshot and shows its date. `npm run refresh-leaderboard`
   updates it. Live data on another host needs the club site to send `Access-Control-Allow-Origin`
   for that host on `/leaderboard/`.
+- Importing from Firebase is a placeholder: the import dialog lists it, disabled, as "coming soon".
+  Reading a tournament from remote storage in read-only mode is also not built yet. Today a file
+  plays that role.
 - UI tests need Chrome and network access (React, Babel and Tailwind load from CDNs). Use
   `npm run build -- --skip-e2e` where either is missing.

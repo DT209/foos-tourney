@@ -149,19 +149,33 @@ globalThis.TournamentLogic = (() => {
     return record;
   }
 
-  function saveTournament(storage, state, now = new Date()) {
+  function persistedFields(state) {
     const persisted = {};
     PERSISTED_FIELDS.forEach(key => {
       persisted[key] = state[key];
     });
+    return persisted;
+  }
+
+  // Writes the tournament's record without changing which one is current.
+  function writeTournamentRecord(storage, state, now) {
+    const record = { version: STORAGE_VERSION, savedAt: now.toISOString(), state: persistedFields(state) };
+    storage.setItem(TOURNAMENT_KEY_PREFIX + state.tournamentId, JSON.stringify(record));
+  }
+
+  // Saves the tournament and makes it the one resumed on reload.
+  function saveTournament(storage, state, now = new Date()) {
     try {
-      const record = { version: STORAGE_VERSION, savedAt: now.toISOString(), state: persisted };
-      storage.setItem(TOURNAMENT_KEY_PREFIX + state.tournamentId, JSON.stringify(record));
+      writeTournamentRecord(storage, state, now);
       storage.setItem(CURRENT_TOURNAMENT_KEY, state.tournamentId);
       return true;
     } catch {
       return false;
     }
+  }
+
+  function tournamentExists(storage, id) {
+    return loadTournament(storage, id) !== null;
   }
 
   function loadTournament(storage, id) {
@@ -241,6 +255,73 @@ globalThis.TournamentLogic = (() => {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  // ==========================================
+  // TOURNAMENT EXPORT / IMPORT
+  // ==========================================
+  // A tournament exports as a self-describing JSON file that can be imported
+  // into any browser's saved tournaments, or viewed read-only. Files are
+  // validated field by field exactly like saved records.
+
+  const EXPORT_FORMAT = 'foos-tourney';
+  const EXPORT_VERSION = 1;
+  const NOT_AN_EXPORT = "This file isn't a Foos Tourney tournament export.";
+
+  function serializeTournamentExport(state, now = new Date()) {
+    return JSON.stringify(
+      {
+        format: EXPORT_FORMAT,
+        version: EXPORT_VERSION,
+        exportedAt: now.toISOString(),
+        tournament: persistedFields(state)
+      },
+      null,
+      2
+    );
+  }
+
+  function tournamentExportFileName(state) {
+    const name = (state.tournamentName.trim() || 'tournament').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `${name}_${tournamentDate(state.startedAt)}_${state.tournamentId.slice(0, 8)}.json`;
+  }
+
+  // Returns { tournament } (a full, validated tournament state) or { error }.
+  function parseTournamentExport(text, { newId = createTournamentId, now = new Date() } = {}) {
+    let file;
+    try {
+      file = JSON.parse(text);
+    } catch {
+      return { error: NOT_AN_EXPORT };
+    }
+    if (!isPlainObject(file) || file.format !== EXPORT_FORMAT) return { error: NOT_AN_EXPORT };
+    if (file.version > EXPORT_VERSION) {
+      return {
+        error: 'This file was exported by a newer version of the Tournament Manager. Update the page and try again.'
+      };
+    }
+    if (!isPlainObject(file.tournament)) return { error: NOT_AN_EXPORT };
+    if (!FIELD_VALIDATORS.tournamentId(file.tournament.tournamentId)) {
+      return { error: 'This export is missing its tournament id.' };
+    }
+    return { tournament: restoreTournamentState(file.tournament, { id: newId(), now }) };
+  }
+
+  // Saves an imported tournament without switching to it.
+  // mode: 'add' (new id), 'replace' (overwrite the saved copy with the same
+  // id) or 'copy' (keep both: new id, "(copy)" appended to the name).
+  // Returns { id } of the stored tournament, or { error }.
+  function storeImportedTournament(storage, tournament, { mode, newId = createTournamentId, now = new Date() }) {
+    const stored =
+      mode === 'copy'
+        ? { ...tournament, tournamentId: newId(), tournamentName: `${tournament.tournamentName} (copy)` }
+        : tournament;
+    try {
+      writeTournamentRecord(storage, stored, now);
+      return { id: stored.tournamentId };
+    } catch {
+      return { error: 'Could not save the imported tournament in this browser.' };
     }
   }
 
@@ -1701,14 +1782,20 @@ globalThis.TournamentLogic = (() => {
     return `${safeFilePart(tournamentName, 'tournament')}_${startDate}.csv`;
   }
 
-  // Triggers a browser download of the CSV via a temporary <a download> link.
-  function downloadCsv(csvText, fileName, doc = globalThis.document) {
+  // Triggers a browser download of `text` via a temporary <a download> link.
+  // The payload is fully percent-encoded: encodeURI would leave '#', which
+  // ends a URL and would silently truncate the file.
+  function downloadText(text, fileName, mimeType, doc = globalThis.document) {
     const link = doc.createElement('a');
-    link.setAttribute('href', encodeURI('data:text/csv;charset=utf-8,' + csvText));
+    link.setAttribute('href', `data:${mimeType};charset=utf-8,${encodeURIComponent(text)}`);
     link.setAttribute('download', fileName);
     doc.body.appendChild(link);
     link.click();
     doc.body.removeChild(link);
+  }
+
+  function downloadCsv(csvText, fileName, doc = globalThis.document) {
+    downloadText(csvText, fileName, 'text/csv', doc);
   }
 
   return {
@@ -1733,7 +1820,13 @@ globalThis.TournamentLogic = (() => {
     loadCurrentTournament,
     listTournaments,
     deleteTournament,
+    tournamentExists,
     getBrowserStorage,
+    // export / import
+    serializeTournamentExport,
+    tournamentExportFileName,
+    parseTournamentExport,
+    storeImportedTournament,
     // leaderboard
     FALLBACK_LEADERBOARD_PLAYERS,
     FALLBACK_LEADERBOARD_DATE,
@@ -1807,6 +1900,7 @@ globalThis.TournamentLogic = (() => {
     formatHistoryRow,
     buildCsv,
     csvFileName,
+    downloadText,
     downloadCsv
   };
 })();
