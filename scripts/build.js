@@ -2,7 +2,7 @@
 // Build pipeline: quality gates, then copy the app to dist/ byte-for-byte.
 // No transpiling, bundling or minifying - the shipped JS is the source JS.
 //
-// Usage: node scripts/build.js [--skip-e2e] [--skip-audit] [--check-only]
+// Usage: node scripts/build.js [--skip-e2e] [--skip-firebase] [--skip-audit] [--check-only]
 
 const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
@@ -113,6 +113,10 @@ const steps = [
   [
     'UI coverage (every UI function runs)',
     args.has('--skip-e2e') ? null : () => run('node', ['scripts/ui-coverage.js'])
+  ],
+  [
+    'Firestore rules (emulator)',
+    args.has('--skip-firebase') ? null : () => run('npm', ['run', '--silent', 'test:firebase'])
   ],
   [
     'Dependency audit (npm audit, high+)',

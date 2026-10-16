@@ -1,0 +1,202 @@
+rules_version = '2';
+
+// Publishing rules for Foos Tourney. See docs/firebase-plan.md.
+//
+// tournaments/{id}  public   ownerUid, slot, updatedAt, name, startedAt, export
+// slots/{1..5}      public   tournamentId, ownerUid
+// owners/{uid}      public   slot, tournamentId (one slot per browser)
+// secrets/{id}      private  code (the publisher code)
+// claims/{id}       private  uid, code (take-over proof)
+//
+// There are no Cloud Functions, so these rules are the only protection.
+// get() and exists() read the state before a batch, getAfter() and
+// existsAfter() the state it would leave behind.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function tournamentPath(id) {
+      return /databases/$(database)/documents/tournaments/$(id);
+    }
+
+    function slotPath(n) {
+      return /databases/$(database)/documents/slots/$(string(n));
+    }
+
+    function ownerPath(u) {
+      return /databases/$(database)/documents/owners/$(u);
+    }
+
+    function secretPath(id) {
+      return /databases/$(database)/documents/secrets/$(id);
+    }
+
+    function claimPath(id) {
+      return /databases/$(database)/documents/claims/$(id);
+    }
+
+    function stale(t) {
+      return t.updatedAt < request.time - duration.value(24, 'h');
+    }
+
+    // A slot is expired when its tournament hasn't published a change for
+    // 24 hours, or when the tournament is gone.
+    function slotExpired(slot) {
+      return !exists(tournamentPath(slot.tournamentId)) || stale(get(tournamentPath(slot.tournamentId)).data);
+    }
+
+    // The browser publishes in a slot it still owns. A stale owners record
+    // (its slot was claimed by someone else) doesn't count.
+    function holdsSlot(u) {
+      return exists(ownerPath(u))
+        && exists(slotPath(get(ownerPath(u)).data.slot))
+        && get(slotPath(get(ownerPath(u)).data.slot)).data.ownerUid == u;
+    }
+
+    function heldSlotReleased(u) {
+      return !existsAfter(slotPath(get(ownerPath(u)).data.slot))
+        || getAfter(slotPath(get(ownerPath(u)).data.slot)).data.ownerUid != u;
+    }
+
+    function exactly(data, fields) {
+      return data.keys().hasOnly(fields) && data.keys().hasAll(fields);
+    }
+
+    // ---------- tournaments ----------
+
+    function validTournament(t) {
+      return exactly(t, ['ownerUid', 'slot', 'updatedAt', 'name', 'startedAt', 'export'])
+        && t.slot is int && t.slot >= 1 && t.slot <= 5
+        && t.updatedAt == request.time
+        && t.name is string && t.name.size() <= 200
+        && t.startedAt is string && t.startedAt.size() <= 40
+        && t.export is map
+        && t.export.format == 'foos-tourney'
+        && t.export.tournament is map
+        && t.export.tournament.adminPin == null;
+    }
+
+    function slotAfterHolds(n, id) {
+      return existsAfter(slotPath(n))
+        && getAfter(slotPath(n)).data.tournamentId == id
+        && getAfter(slotPath(n)).data.ownerUid == uid();
+    }
+
+    function publishChange(id) {
+      return resource.data.ownerUid == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['export', 'name', 'updatedAt'])
+        && exists(slotPath(resource.data.slot))
+        && get(slotPath(resource.data.slot)).data.tournamentId == id
+        && get(slotPath(resource.data.slot)).data.ownerUid == uid();
+    }
+
+    function takeOverTournament(id) {
+      return resource.data.ownerUid != uid()
+        && request.resource.data.ownerUid == uid()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ownerUid', 'updatedAt'])
+        && existsAfter(claimPath(id))
+        && getAfter(claimPath(id)).data.uid == uid()
+        && slotAfterHolds(resource.data.slot, id);
+    }
+
+    match /tournaments/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && validTournament(request.resource.data)
+        && request.resource.data.ownerUid == uid()
+        && slotAfterHolds(request.resource.data.slot, id);
+      allow update: if signedIn()
+        && validTournament(request.resource.data)
+        && (publishChange(id) || takeOverTournament(id));
+      // Removed by its owner when replacing or releasing it, or by anyone
+      // claiming its expired slot. Either way the slot no longer points here.
+      allow delete: if signedIn()
+        && (resource.data.ownerUid == uid() || stale(resource.data))
+        && !(existsAfter(slotPath(resource.data.slot))
+          && getAfter(slotPath(resource.data.slot)).data.tournamentId == id);
+    }
+
+    // ---------- slots ----------
+
+    function newTournamentInSlot(n) {
+      return existsAfter(tournamentPath(request.resource.data.tournamentId))
+        && getAfter(tournamentPath(request.resource.data.tournamentId)).data.ownerUid == uid()
+        && getAfter(tournamentPath(request.resource.data.tournamentId)).data.slot == int(n);
+    }
+
+    function claimSlot(n) {
+      return (resource == null || slotExpired(resource.data))
+        && !holdsSlot(uid())
+        && newTournamentInSlot(n);
+    }
+
+    function replaceInSlot(n) {
+      return resource != null
+        && resource.data.ownerUid == uid()
+        && request.resource.data.tournamentId != resource.data.tournamentId
+        && !existsAfter(tournamentPath(resource.data.tournamentId))
+        && newTournamentInSlot(n);
+    }
+
+    function takeOverSlot(n) {
+      return resource != null
+        && resource.data.ownerUid != uid()
+        && request.resource.data.tournamentId == resource.data.tournamentId
+        && newTournamentInSlot(n)
+        && (!holdsSlot(uid()) || heldSlotReleased(uid()));
+    }
+
+    match /slots/{n} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && n in ['1', '2', '3', '4', '5']
+        && exactly(request.resource.data, ['tournamentId', 'ownerUid'])
+        && request.resource.data.ownerUid == uid()
+        && (claimSlot(n) || replaceInSlot(n) || takeOverSlot(n));
+      allow delete: if signedIn() && resource.data.ownerUid == uid();
+    }
+
+    // ---------- owners ----------
+
+    match /owners/{u} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && u == uid()
+        && exactly(request.resource.data, ['slot', 'tournamentId'])
+        && request.resource.data.slot is int
+        && request.resource.data.slot >= 1 && request.resource.data.slot <= 5
+        && slotAfterHolds(request.resource.data.slot, request.resource.data.tournamentId);
+      allow delete: if false;
+    }
+
+    // ---------- secrets and claims (never readable) ----------
+
+    match /secrets/{id} {
+      allow read: if false;
+      allow create, update: if signedIn()
+        && !exists(tournamentPath(id))
+        && existsAfter(tournamentPath(id))
+        && getAfter(tournamentPath(id)).data.ownerUid == uid()
+        && exactly(request.resource.data, ['code'])
+        && request.resource.data.code is string
+        && request.resource.data.code.matches('^[0-9A-HJKMNP-TV-Z]{12}$');
+      allow delete: if signedIn() && !existsAfter(tournamentPath(id));
+    }
+
+    match /claims/{id} {
+      allow read: if false;
+      allow create, update: if signedIn()
+        && exactly(request.resource.data, ['uid', 'code'])
+        && request.resource.data.uid == uid()
+        && exists(secretPath(id))
+        && request.resource.data.code == get(secretPath(id)).data.code;
+      allow delete: if signedIn() && !existsAfter(tournamentPath(id));
+    }
+  }
+}

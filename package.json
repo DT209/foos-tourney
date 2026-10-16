@@ -15,14 +15,17 @@
     "audit": "npm audit --audit-level=high",
     "refresh-leaderboard": "node scripts/refresh-leaderboard.js",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test-e2e/*.e2e.js",
-    "coverage:ui": "node scripts/ui-coverage.js"
+    "coverage:ui": "node scripts/ui-coverage.js",
+    "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"node --test --test-concurrency=1 test-firebase/*.fb.js\""
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@firebase/rules-unit-testing": "5.0.2",
     "c8": "^10.1.3",
     "eslint": "^9.39.5",
     "eslint-plugin-html": "^8.2.1",
     "eslint-plugin-react": "^7.37.5",
+    "firebase": "12.19.0",
     "globals": "^17.13.0",
     "html-validate": "^10.17.0",
     "prettier": "^3.9.10",
@@ -30,5 +33,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "^1.14.0"
   }
 }

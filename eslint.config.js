@@ -24,7 +24,7 @@ module.exports = [
     rules: quality
   },
   {
-    files: ['test/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
+    files: ['test/**/*.js', 'test-firebase/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } },
     rules: quality
   },
