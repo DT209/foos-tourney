@@ -147,6 +147,40 @@ describe('buildCsv', () => {
   });
 });
 
+describe('CSV formula injection', () => {
+  it('prefixes text cells that a spreadsheet would run as a formula', () => {
+    const evil = ['=1+1', '+SUM(A1)', '-2+3', '@cmd', '\tx', '\rx'].map((name, i) => player(10 + i, name));
+    const list = [
+      {
+        uniqueId: 'id',
+        winner: 1,
+        team1: [evil[0], evil[1]],
+        team2: [evil[2], evil[3]],
+        games: [{ t1: 5, t2: 1 }],
+        isHandicap: 'No'
+      },
+      { uniqueId: 'id2', winner: 1, team1: [evil[4]], team2: [evil[5]], games: [{ t1: 5, t2: 1 }], isHandicap: 'No' }
+    ];
+    const rows = L.buildCsv(list, 'D').split('\n');
+    assert.equal(rows[1], `"id",D,1,5,1,"'=1+1","'+SUM(A1)","'-2+3","'@cmd","No"`);
+    assert.equal(rows[2], `"id2",D,1,5,1,"'\tx","","'\rx","","No"`);
+  });
+
+  it('leaves ordinary names alone', () => {
+    const list = [
+      {
+        uniqueId: 'id',
+        winner: 1,
+        team1: [player(1, 'Ann-Marie')],
+        team2: [player(2, 'Bo')],
+        games: [{ t1: 5, t2: 1 }],
+        isHandicap: 'Yes'
+      }
+    ];
+    assert.match(L.buildCsv(list, 'D'), /"Ann-Marie","","Bo","","Yes"/);
+  });
+});
+
 describe('csvFileName', () => {
   it('sanitizes the tournament name with a lowercase fallback', () => {
     assert.equal(L.csvFileName('Thu DYP', '2026-10-16'), 'Thu_DYP_2026-10-16.csv');

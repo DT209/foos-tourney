@@ -383,7 +383,12 @@
       };
 
       const savePlayerName = (id) => {
-        setPlayers(renamePlayer(players, id, editingName));
+        const result = renamePlayer(players, id, editingName);
+        if (result.error) {
+          alert(result.error); // keep the edit open so the name can be fixed
+          return;
+        }
+        setPlayers(result.players);
         setEditingPlayerId(null);
       };
 

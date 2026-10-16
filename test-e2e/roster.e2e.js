@@ -144,6 +144,20 @@ describe('editing players (wide screen)', () => {
   });
 });
 
+describe('renaming', () => {
+  it('refuses a name another player has, keeping the edit open', async () => {
+    app = await openApp();
+    await submitName('Andrew');
+    await submitName('Fred');
+    await app.click('✏️', { within: row('Fred') });
+    await app.type(`${row('Fred')} input`, 'andrew');
+    await app.click('✓', { within: row('Fred') });
+    assert.equal(app.dialogs.at(-1), 'A player named "andrew" already exists in the roster.');
+    assert.deepEqual(await rosterNames(), ['Andrew', 'Fred']);
+    assert.ok(await app.page.$(`${row('Fred')} input`), 'still editing');
+  });
+});
+
 describe('editing players (narrow screen menu)', () => {
   it('the ⋮ menu offers paid, pause, rename and delete, and closes on outside click', async () => {
     app = await openApp({ viewport: { width: 800, height: 900 } });

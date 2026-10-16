@@ -72,12 +72,71 @@ describe('parseTournamentExport', () => {
     assert.deepEqual(result.tournament, JSON.parse(JSON.stringify(tournament())));
   });
 
-  it('fills invalid or missing fields with defaults, like a saved tournament', () => {
-    const text = JSON.stringify({ format: 'foos-tourney', version: 1, tournament: { tournamentId: ID, players: 'x' } });
+  it('fills missing fields with defaults', () => {
+    const text = JSON.stringify({ format: 'foos-tourney', version: 1, tournament: { tournamentId: ID } });
     const { tournament: t } = L.parseTournamentExport(text, opts);
     assert.equal(t.tournamentId, ID);
     assert.deepEqual(t.players, []);
     assert.equal(t.startedAt, NOW.toISOString());
+  });
+
+  it('rejects a file with any invalid field, naming it', () => {
+    const file = tournament =>
+      JSON.stringify({ format: 'foos-tourney', version: 1, tournament: { tournamentId: ID, ...tournament } });
+    const cases = {
+      players: [[null], [1, 2], [{}], [{ id: 1, name: 'A' }], 'x'],
+      matches: [[null], [{ id: 1, status: 'LIVE' }], [{ id: 1, status: 'BOGUS', team1: [], team2: [], games: [] }]],
+      bracketData: [{}, { type: 'single', maxGames: 1, winnersRounds: 'x' }],
+      tableCount: [0, 11, 1e9, 2.5, '3'],
+      maxGames: [0, 2, 4, 9],
+      bracketMaxGames: [2],
+      format: ['3v3'],
+      activeTab: ['admin'],
+      bracketElimType: ['triple'],
+      teamFormationStrategy: ['chaos'],
+      seedingStrategy: ['alphabetical'],
+      customTeams: [[null], 'x'],
+      tournamentName: [7]
+    };
+    const ok = { ...player(1), id: 'p-1' };
+    cases.players.push([{ ...ok, id: '' }], [{ ...ok, wins: -1 }], [{ ...ok, eligibleDrawsMissed: 'x' }]);
+    const match = { id: 1, status: 'DONE', team1: [ok], team2: [ok], games: [{ t1: 5, t2: 3 }], winner: 2 };
+    cases.matches.push([{ ...match, winner: 3 }], [{ ...match, games: [{ t1: null, t2: 1 }] }]);
+    for (const [field, values] of Object.entries(cases)) {
+      for (const value of values) {
+        assert.deepEqual(
+          L.parseTournamentExport(file({ [field]: value }), opts),
+          { error: `This file has invalid tournament data (${field}).` },
+          `${field}: ${JSON.stringify(value)}`
+        );
+      }
+    }
+  });
+
+  it('accepts every valid option and a real bracket', () => {
+    const valid = {
+      tableCount: 10,
+      maxGames: 7,
+      bracketMaxGames: 1,
+      format: '1v1',
+      activeTab: 'bracket',
+      bracketElimType: 'championship',
+      teamFormationStrategy: 'manual',
+      seedingStrategy: 'elo',
+      customTeams: [{ p1: player(1), p2: null }, { p1: null }],
+      players: [
+        { ...player(1), id: 'p-1' },
+        { ...player(2), eligibleDrawsMissed: undefined }
+      ],
+      matches: [
+        { id: 'm1', status: 'DONE', team1: [player(1)], team2: [player(2)], games: [{ t1: 5, t2: '3' }], winner: 2 }
+      ],
+      bracketData: L.generateBracketStructure(teams(5), 'double', 3)
+    };
+    const text = JSON.stringify({ format: 'foos-tourney', version: 1, tournament: { tournamentId: ID, ...valid } });
+    const { tournament: t } = L.parseTournamentExport(text, opts);
+    assert.equal(t.tableCount, 10);
+    assert.equal(t.bracketData.type, 'double');
   });
 
   it('rejects files that are not Foos Tourney exports', () => {

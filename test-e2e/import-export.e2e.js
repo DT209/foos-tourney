@@ -107,6 +107,29 @@ describe('import dialog', () => {
   });
 });
 
+describe('import validation', () => {
+  const exportOf = tournament => JSON.stringify({ format: 'foos-tourney', version: 1, tournament });
+
+  it('rejects a file with malformed data instead of crashing', async () => {
+    app = await openApp();
+    await openImport();
+    await app.chooseImportFile(exportOf({ tournamentId: 'abc', players: [null] }));
+    assert.equal(app.dialogs.at(-1), 'This file has invalid tournament data (players).');
+    await app.chooseImportFile(exportOf({ tournamentId: 'abc', tableCount: 1000000000 }));
+    assert.equal(app.dialogs.at(-1), 'This file has invalid tournament data (tableCount).');
+  });
+
+  it('a file that is locked without a PIN opens unlocked', async () => {
+    app = await openApp();
+    await openImport();
+    await app.chooseImportFile(exportOf({ tournamentId: 'locked-no-pin', tournamentName: 'Locked', isLocked: true }));
+    await app.click('Add to Saved Tournaments', { within: IMPORT });
+    await app.click('Open', { within: '[data-tournament-id="locked-no-pin"]' });
+    assert.doesNotMatch(await app.text(), /View Only Mode/);
+    assert.equal(await app.page.$eval(NAME, e => e.disabled), false);
+  });
+});
+
 describe('importing into saved tournaments', () => {
   it('adds a tournament from another browser without switching to it; it can then be opened', async () => {
     app = await openApp();

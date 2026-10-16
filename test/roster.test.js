@@ -76,9 +76,16 @@ describe('player edits', () => {
   });
 
   it('renames with sanitizing, or leaves the roster alone when blank', () => {
-    assert.equal(L.renamePlayer(roster, 1, ' <Al> ')[0].name, 'Al');
-    assert.equal(L.renamePlayer(roster, 1, ' ')[0].name, 'Ann');
-    assert.equal(L.renamePlayer(roster, 1, ''), roster);
+    assert.equal(L.renamePlayer(roster, 1, ' <Al> ').players[0].name, 'Al');
+    assert.equal(L.renamePlayer(roster, 1, ' ').players[0].name, 'Ann');
+    assert.equal(L.renamePlayer(roster, 1, '').players, roster);
+  });
+
+  it('rename refuses a name another player already has (case-insensitive)', () => {
+    assert.deepEqual(L.renamePlayer(roster, 1, ' bo '), {
+      error: 'A player named "bo" already exists in the roster.'
+    });
+    assert.equal(L.renamePlayer(roster, 1, 'ANN').players[0].name, 'ANN', 'changing your own case is fine');
   });
 
   it('removes by id', () => {

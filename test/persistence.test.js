@@ -127,6 +127,27 @@ describe('newTournamentState / restoreTournamentState', () => {
     assert.deepEqual([restored.tournamentId, restored.startedAt], [ID, NOW.toISOString()]);
   });
 
+  it('falls back to defaults for malformed nested data in a saved tournament', () => {
+    const restored = L.restoreTournamentState(
+      {
+        players: [null, { id: 1 }],
+        matches: [{ id: 1 }],
+        bracketData: { type: 'single' },
+        tableCount: 1e9,
+        maxGames: 4,
+        customTeams: [null]
+      },
+      opts
+    );
+    assert.deepEqual(restored, L.newTournamentState(ID, NOW));
+  });
+
+  it('a saved tournament that is locked without a PIN loads unlocked', () => {
+    assert.equal(L.restoreTournamentState({ isLocked: true, adminPin: null }, opts).isLocked, false);
+    assert.equal(L.restoreTournamentState({ isLocked: true }, opts).isLocked, false);
+    assert.equal(L.restoreTournamentState({ isLocked: true, adminPin: '2468' }, opts).isLocked, true);
+  });
+
   it('accepts a numeric team count and an empty bracket', () => {
     const restored = L.restoreTournamentState({ bracketTeamCount: 8, bracketData: null }, opts);
     assert.equal(restored.bracketTeamCount, 8);

@@ -106,29 +106,99 @@ globalThis.TournamentLogic = (() => {
 
   const isPlainObject = v => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-  // Fields whose valid type differs from (or is narrower than) their default's type.
+  // Shape checks for nested data, so a hand-edited or corrupt save/import
+  // can't crash rendering. They check what the UI relies on, not every field.
+  const isId = v => (typeof v === 'number' && isFinite(v)) || (typeof v === 'string' && v.length > 0);
+  const isCount = v => typeof v === 'number' && isFinite(v) && v >= 0;
+  const isNamed = v => isPlainObject(v) && typeof v.name === 'string';
+  const isScore = v => typeof v === 'string' || (typeof v === 'number' && isFinite(v));
+  const isWinner = v => v === null || v === undefined || v === 1 || v === 2;
+  const isArrayOf = (v, check) => Array.isArray(v) && v.every(check);
+  const isOneOf = values => v => values.includes(v);
+  const GAME_COUNTS = [1, 3, 5, 7];
+
+  const isPlayer = p =>
+    isNamed(p) &&
+    isId(p.id) &&
+    typeof p.paid === 'boolean' &&
+    typeof p.active === 'boolean' &&
+    ['wins', 'losses', 'gf', 'ga'].every(k => isCount(p[k])) &&
+    (p.eligibleDrawsMissed === undefined || isCount(p.eligibleDrawsMissed));
+  const isTeamPlayer = p => isNamed(p) && isId(p.id);
+  const isGame = g => isPlainObject(g) && isScore(g.t1) && isScore(g.t2);
+  const isMonsterMatch = m =>
+    isPlainObject(m) &&
+    isId(m.id) &&
+    ['LIVE', 'DONE'].includes(m.status) &&
+    isArrayOf(m.team1, isTeamPlayer) &&
+    isArrayOf(m.team2, isTeamPlayer) &&
+    isArrayOf(m.games, isGame) &&
+    isWinner(m.winner) &&
+    isWinner(m.overrideWinner);
+  const isBracketTeam = t => t === null || isNamed(t);
+  const isBracketMatch = m =>
+    isPlainObject(m) &&
+    ['PENDING', 'READY', 'DONE'].includes(m.status) &&
+    isBracketTeam(m.team1) &&
+    isBracketTeam(m.team2) &&
+    isArrayOf(m.games, isGame) &&
+    isWinner(m.winner) &&
+    isWinner(m.overrideWinner);
+  const isRounds = v => isArrayOf(v, round => isArrayOf(round, isBracketMatch));
+  const isBracket = b =>
+    isPlainObject(b) &&
+    ['single', 'double', 'championship'].includes(b.type) &&
+    GAME_COUNTS.includes(b.maxGames) &&
+    isRounds(b.winnersRounds) &&
+    (b.losersRounds === null || isRounds(b.losersRounds)) &&
+    (b.grandFinals === null || isArrayOf(b.grandFinals, isBracketMatch)) &&
+    (b.thirdPlaceMatch === null || isBracketMatch(b.thirdPlaceMatch)) &&
+    isArrayOf(b.originalTeams, isNamed);
+  const isManualSlot = p => p === null || p === undefined || isTeamPlayer(p);
+  const isCustomTeam = t => isPlainObject(t) && isManualSlot(t.p1) && isManualSlot(t.p2);
+
+  // Fields whose valid values are narrower than "same type as the default".
   const FIELD_VALIDATORS = {
     tournamentId: v => typeof v === 'string' && v.length > 0,
     startedAt: v => typeof v === 'string' && !isNaN(Date.parse(v)),
-    bracketData: v => v === null || isPlainObject(v),
+    tableCount: v => Number.isInteger(v) && v >= 1 && v <= 10,
+    format: isOneOf(['2v2', '1v1']),
+    maxGames: isOneOf(GAME_COUNTS),
+    activeTab: isOneOf(['pool', 'bracket']),
+    players: v => isArrayOf(v, isPlayer),
+    matches: v => isArrayOf(v, isMonsterMatch),
+    bracketData: v => v === null || isBracket(v),
     bracketTeamCount: v => typeof v === 'number' || typeof v === 'string',
+    bracketElimType: isOneOf(['single', 'double', 'championship']),
+    bracketMaxGames: isOneOf(GAME_COUNTS),
+    teamFormationStrategy: isOneOf(['fair', 'topBias', 'topBottomRandom', 'random', 'manual']),
+    seedingStrategy: isOneOf(['ranking', 'random', 'elo']),
+    customTeams: v => isArrayOf(v, isCustomTeam),
     adminPin: v => v === null || typeof v === 'string'
   };
 
   function isValidField(key, value, fallback) {
     if (FIELD_VALIDATORS[key]) return FIELD_VALIDATORS[key](value);
-    if (Array.isArray(fallback)) return Array.isArray(value);
     return typeof value === typeof fallback;
   }
 
+  // Saved fields that are present but invalid.
+  function invalidFields(saved, defaults) {
+    return PERSISTED_FIELDS.filter(key => key in saved && !isValidField(key, saved[key], defaults[key]));
+  }
+
   // Full state for a saved tournament: each saved field is kept only if it
-  // has a valid type. With nothing saved, a new tournament with `id` and `now`.
+  // is valid, otherwise its default is used. With nothing saved, a new
+  // tournament with `id` and `now`.
   function restoreTournamentState(saved, { id, now }) {
     const state = newTournamentState(id, now);
     if (!saved) return state;
+    const invalid = invalidFields(saved, state);
     PERSISTED_FIELDS.forEach(key => {
-      if (key in saved && isValidField(key, saved[key], state[key])) state[key] = saved[key];
+      if (key in saved && !invalid.includes(key)) state[key] = saved[key];
     });
+    // A lock with no PIN could never be opened: load it unlocked.
+    if (state.adminPin === null) state.isLocked = false;
     return state;
   }
 
@@ -305,6 +375,9 @@ globalThis.TournamentLogic = (() => {
     if (!FIELD_VALIDATORS.tournamentId(file.tournament.tournamentId)) {
       return { error: 'This export is missing its tournament id.' };
     }
+    const fallback = newTournamentState('', now);
+    const [invalid] = invalidFields(file.tournament, fallback);
+    if (invalid) return { error: `This file has invalid tournament data (${invalid}).` };
     return { tournament: restoreTournamentState(file.tournament, { id: newId(), now }) };
   }
 
@@ -504,10 +577,15 @@ globalThis.TournamentLogic = (() => {
   }
 
   // An empty (post-sanitize) name leaves the roster unchanged.
+  // Returns { players } or { error }. A blank name leaves the roster unchanged;
+  // a name another player already has (case-insensitive) is refused.
   function renamePlayer(players, id, rawName) {
     const name = sanitizeInput(rawName, PLAYER_NAME_MAX_LENGTH);
-    if (!name) return players;
-    return players.map(p => (p.id === id ? { ...p, name } : p));
+    if (!name) return { players };
+    if (players.some(p => p.id !== id && normalizeName(p.name) === name.toLowerCase())) {
+      return { error: `A player named "${name}" already exists in the roster.` };
+    }
+    return { players: players.map(p => (p.id === id ? { ...p, name } : p)) };
   }
 
   function removePlayer(players, id) {
@@ -1745,8 +1823,12 @@ globalThis.TournamentLogic = (() => {
     'Handicap Override'
   ];
 
+  // Quotes a CSV text cell. Cells starting with = + - @ tab or CR would run as
+  // a formula in Excel/Sheets (CSV injection), so they get a leading '.
   function csvQuote(value) {
-    return `"${String(value).replace(/"/g, '""')}"`;
+    const text = String(value);
+    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replace(/"/g, '""')}"`;
   }
 
   // One row per scored game. Returns null when there's nothing to export.
