@@ -6,6 +6,9 @@ const path = require('node:path');
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 const firebase = require('firebase/compat/app');
 require('firebase/compat/firestore');
+require('../tournament-logic.js');
+
+const { newTournamentState, serializeTournamentExport } = globalThis.TournamentLogic;
 
 const ID = '11111111-1111-4111-8111-111111111111';
 const ID2 = '22222222-2222-4222-8222-222222222222';
@@ -16,6 +19,12 @@ const hoursAgo = h => firebase.firestore.Timestamp.fromMillis(Date.now() - h * 3
 
 let env;
 
+// The Export JSON text, as a file would hold it.
+function exportText(changes = {}) {
+  const state = newTournamentState(ID, new Date('2026-10-16T19:00:00.000Z'));
+  return serializeTournamentExport({ ...state, tournamentName: 'Week 3', adminPin: null, ...changes });
+}
+
 function tournamentDoc(ownerUid, slot, overrides = {}) {
   return {
     ownerUid,
@@ -23,12 +32,7 @@ function tournamentDoc(ownerUid, slot, overrides = {}) {
     updatedAt: server(),
     name: 'Week 3',
     startedAt: '2026-10-16T19:00:00.000Z',
-    export: {
-      format: 'foos-tourney',
-      version: 1,
-      exportedAt: '2026-10-16T19:00:00.000Z',
-      tournament: { tournamentId: ID, adminPin: null, isLocked: false, players: [] }
-    },
+    export: exportText(),
     ...overrides
   };
 }
@@ -162,13 +166,19 @@ describe('starting to publish', () => {
 
   it('rejects extra fields, a PIN and a client clock', async () => {
     await assertFails(startBatch(db('alice'), 'alice', ID, 1, { tournament: { note: 'x' } }));
-    const withPin = tournamentDoc('alice', 1);
-    withPin.export.tournament.adminPin = '1234';
-    await assertFails(startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: withPin.export } }));
+    await assertFails(
+      startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: exportText({ adminPin: '1234' }) } })
+    );
     await assertFails(
       startBatch(db('alice'), 'alice', ID, 1, { tournament: { updatedAt: firebase.firestore.Timestamp.now() } })
     );
-    await assertFails(startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: { format: 'other' } } }));
+    await assertFails(startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: '{"format": "other"}' } }));
+    await assertFails(startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: { format: 'foos-tourney' } } }));
+  });
+
+  it('accepts names that look like a PIN field, since JSON escapes them', async () => {
+    const players = [{ id: 1, name: 'x", "adminPin": "1234' }];
+    await assertSucceeds(startBatch(db('alice'), 'alice', ID, 1, { tournament: { export: exportText({ players }) } }));
   });
 
   it('rejects a malformed publisher code', async () => {
@@ -229,7 +239,9 @@ describe('publishing a change', () => {
 
   it('lets the owner replace the JSON and name', async () => {
     await seed();
-    await assertSucceeds(change('alice', { name: 'Week 3 finals', 'export.exportedAt': '2026-10-16T21:00:00.000Z' }));
+    await assertSucceeds(
+      change('alice', { name: 'Week 3 finals', export: exportText({ tournamentName: 'Week 3 finals' }) })
+    );
   });
 
   it('refuses everyone else', async () => {
@@ -257,7 +269,7 @@ describe('publishing a change', () => {
 
   it('cannot add a PIN', async () => {
     await seed();
-    await assertFails(change('alice', { 'export.tournament.adminPin': '1234' }));
+    await assertFails(change('alice', { export: exportText({ adminPin: '1234' }) }));
   });
 
   it('stops once the slot belongs to another tournament', async () => {

@@ -115,7 +115,7 @@ const steps = [
     args.has('--skip-e2e') ? null : () => run('node', ['scripts/ui-coverage.js'])
   ],
   [
-    'Firestore rules (emulator)',
+    'Firestore rules + adapter (emulator, 100% coverage)',
     args.has('--skip-firebase') ? null : () => run('npm', ['run', '--silent', 'test:firebase'])
   ],
   [

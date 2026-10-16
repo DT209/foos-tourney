@@ -5,3 +5,4 @@ dist/
 package-lock.json
 coverage-ui/
 *-debug.log
+coverage-firebase/

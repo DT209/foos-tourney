@@ -16,7 +16,7 @@
     "refresh-leaderboard": "node scripts/refresh-leaderboard.js",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test-e2e/*.e2e.js",
     "coverage:ui": "node scripts/ui-coverage.js",
-    "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"node --test --test-concurrency=1 test-firebase/*.fb.js\""
+    "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"c8 --check-coverage --100 --include firebase-remote.js --reports-dir coverage-firebase --reporter text node --test --test-concurrency=1 test-firebase/rules.fb.js test-firebase/remote.fb.js\""
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

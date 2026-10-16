@@ -16,10 +16,10 @@ const quality = {
 };
 
 module.exports = [
-  { ignores: ['node_modules/', 'coverage/', 'dist/'] },
+  { ignores: ['node_modules/', 'coverage/', 'coverage-ui/', 'coverage-firebase/', 'dist/'] },
   js.configs.recommended,
   {
-    files: ['tournament-logic.js'],
+    files: ['tournament-logic.js', 'firebase-remote.js', 'firebase-config.js'],
     languageOptions: { sourceType: 'script', globals: { ...globals.browser } },
     rules: quality
   },

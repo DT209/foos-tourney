@@ -2098,6 +2098,285 @@ globalThis.TournamentLogic = (() => {
     return text === null ? null : { text, fileName: csvFileName(state.tournamentName, date) };
   }
 
+  // ==========================================
+  // PUBLISHING (FIREBASE)
+  // ==========================================
+  // Pure helpers for publishing a tournament to Firestore (see
+  // docs/firebase-plan.md). firebase-remote.js runs the writes these plan;
+  // firestore.rules enforces the same limits on the server.
+
+  const PUBLISH_SLOTS = 5;
+  const SLOT_TTL_MS = 24 * 60 * 60 * 1000;
+  const PUBLISH_INTERVAL_MS = 5000;
+  // Stands in for the server's clock in planned writes; the adapter swaps it
+  // for a Firestore server timestamp.
+  const SERVER_TIME = Object.freeze({ serverTime: true });
+  const PUBLISHING_KEY = 'foosTourney.publishing';
+  const CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+  const CODE_LENGTH = 12;
+  const REMOTE_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
+
+  // What Display Mode shows (tables, leaderboard, history) as one string, so
+  // a change to any of them is a string comparison.
+  function watchedSections(board) {
+    return JSON.stringify([board.tables, board.standings, board.history]);
+  }
+
+  function watchedChanged(previous, next) {
+    return previous !== next;
+  }
+
+  // Milliseconds to wait before the next write: 0 sends now, otherwise wait
+  // until `interval` has passed since the last one (the write then carries
+  // the latest state).
+  function publishThrottle(lastSentAt, now, interval = PUBLISH_INTERVAL_MS) {
+    if (lastSentAt === null) return 0;
+    return Math.max(0, lastSentAt + interval - now);
+  }
+
+  // The published copy: the Export JSON text without this device's PIN and lock.
+  function publishedExport(state, now = new Date()) {
+    return serializeTournamentExport({ ...state, adminPin: null, isLocked: false }, now);
+  }
+
+  const publishedName = state => state.tournamentName.slice(0, 200);
+
+  function publishedDocument({ state, uid, slot, now = new Date() }) {
+    return {
+      ownerUid: uid,
+      slot,
+      updatedAt: SERVER_TIME,
+      name: publishedName(state),
+      startedAt: state.startedAt,
+      export: publishedExport(state, now)
+    };
+  }
+
+  function isSlotExpired(updatedAt, now) {
+    return updatedAt + SLOT_TTL_MS <= now;
+  }
+
+  // slots: PUBLISH_SLOTS entries ({ tournamentId, ownerUid } or null), index 0
+  // is slot 1. tournaments: { [id]: { updatedAt (ms), name } }.
+  // A slot is free when empty or its tournament is gone; otherwise the oldest
+  // expired one is taken. Returns { slot, expiredTournamentId } or null.
+  function nextFreeSlot(slots, tournaments, now) {
+    let oldest = null;
+    for (let i = 0; i < PUBLISH_SLOTS; i++) {
+      const slot = slots[i];
+      const tournament = slot && tournaments[slot.tournamentId];
+      if (!tournament) return { slot: i + 1, expiredTournamentId: slot ? slot.tournamentId : null };
+      if (isSlotExpired(tournament.updatedAt, now) && (!oldest || tournament.updatedAt < oldest.updatedAt)) {
+        oldest = { slot: i + 1, expiredTournamentId: slot.tournamentId, updatedAt: tournament.updatedAt };
+      }
+    }
+    return oldest && { slot: oldest.slot, expiredTournamentId: oldest.expiredTournamentId };
+  }
+
+  // The slot this browser still publishes in, or null. A stale owner record
+  // (its slot was claimed by someone else) doesn't count.
+  function heldSlot(uid, owner, slots) {
+    const slot = owner && slots[owner.slot - 1];
+    return slot && slot.ownerUid === uid ? { slot: owner.slot, tournamentId: slot.tournamentId } : null;
+  }
+
+  // What New Tournament should do:
+  // { action: 'ask-replace', slot, tournamentId, name } when this browser already publishes,
+  // { action: 'claim', slot, expiredTournamentId } when a slot is free or expired,
+  // { action: 'full', nextFreeAt } (ms) when every slot is in use.
+  function publishDecision({ uid, owner, slots, tournaments, now }) {
+    const held = heldSlot(uid, owner, slots);
+    if (held) {
+      const tournament = tournaments[held.tournamentId];
+      return { action: 'ask-replace', ...held, name: tournament ? tournament.name : '' };
+    }
+    const free = nextFreeSlot(slots, tournaments, now);
+    if (free) return { action: 'claim', ...free };
+    const nextFreeAt = Math.min(...slots.map(slot => tournaments[slot.tournamentId].updatedAt + SLOT_TTL_MS));
+    return { action: 'full', nextFreeAt };
+  }
+
+  // Planned writes: { op: 'set' | 'update' | 'delete', path, data }.
+  const removeTournamentWrites = id => [
+    { op: 'delete', path: `tournaments/${id}` },
+    { op: 'delete', path: `secrets/${id}` },
+    { op: 'delete', path: `claims/${id}` }
+  ];
+
+  const slotWrites = (uid, slot, id) => [
+    { op: 'set', path: `slots/${slot}`, data: { tournamentId: id, ownerUid: uid } },
+    { op: 'set', path: `owners/${uid}`, data: { slot, tournamentId: id } }
+  ];
+
+  function claimWrites({ uid, slot, expiredTournamentId, document, id, code }) {
+    return [
+      ...(expiredTournamentId ? removeTournamentWrites(expiredTournamentId) : []),
+      { op: 'set', path: `tournaments/${id}`, data: document },
+      { op: 'set', path: `secrets/${id}`, data: { code } },
+      ...slotWrites(uid, slot, id)
+    ];
+  }
+
+  function replaceWrites({ uid, slot, oldId, document, id, code }) {
+    return [
+      ...removeTournamentWrites(oldId),
+      { op: 'set', path: `tournaments/${id}`, data: document },
+      { op: 'set', path: `secrets/${id}`, data: { code } },
+      ...slotWrites(uid, slot, id)
+    ];
+  }
+
+  function publishWrites({ state, now = new Date() }) {
+    return [
+      {
+        op: 'update',
+        path: `tournaments/${state.tournamentId}`,
+        data: { export: publishedExport(state, now), name: publishedName(state), updatedAt: SERVER_TIME }
+      }
+    ];
+  }
+
+  // release: the slot this browser gives up ({ slot, tournamentId }) or null.
+  function takeOverWrites({ uid, id, slot, code, release }) {
+    return [
+      ...(release
+        ? [{ op: 'delete', path: `slots/${release.slot}` }, ...removeTournamentWrites(release.tournamentId)]
+        : []),
+      { op: 'set', path: `claims/${id}`, data: { uid, code } },
+      { op: 'update', path: `tournaments/${id}`, data: { ownerUid: uid, updatedAt: SERVER_TIME } },
+      ...slotWrites(uid, slot, id)
+    ];
+  }
+
+  // The published tournaments for lists, oldest slot first:
+  // [{ id, slot, name, startedAt, updatedAt, ownerUid, expired }].
+  function publishedList(slots, tournaments, now) {
+    return slots
+      .map((slot, i) => slot && tournaments[slot.tournamentId] && { slot: i + 1, ...tournaments[slot.tournamentId] })
+      .filter(Boolean)
+      .map(t => ({
+        id: t.id,
+        slot: t.slot,
+        name: t.name,
+        startedAt: t.startedAt,
+        updatedAt: t.updatedAt,
+        ownerUid: t.ownerUid,
+        expired: isSlotExpired(t.updatedAt, now)
+      }));
+  }
+
+  // Display Mode's list: this device first (and selected by default), then the
+  // published tournaments, without this device's own tournament.
+  function displayChoices(local, published) {
+    return [
+      { key: 'local', source: 'local', id: local.id, name: local.name },
+      ...published
+        .filter(p => p.id !== local.id)
+        .map(p => ({
+          key: p.id,
+          source: 'remote',
+          id: p.id,
+          name: p.name,
+          startedAt: p.startedAt,
+          updatedAt: p.updatedAt
+        }))
+    ];
+  }
+
+  function secureRandom() {
+    return globalThis.crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+  }
+
+  // 12 characters of Crockford base32 (no I, L, O or U): 60 random bits.
+  function generatePublisherCode(random = secureRandom) {
+    let code = '';
+    for (let i = 0; i < CODE_LENGTH; i++) code += CODE_ALPHABET[Math.floor(random() * CODE_ALPHABET.length)];
+    return code;
+  }
+
+  function formatPublisherCode(code) {
+    return code.match(/.{1,4}/g).join('-');
+  }
+
+  // Accepts typed codes loosely (case, spaces, dashes, O for 0, I or L for 1).
+  // Returns the 12-character code, or null.
+  function normalizePublisherCode(input) {
+    if (typeof input !== 'string') return null;
+    const code = input.toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+    return code.length === CODE_LENGTH && [...code].every(c => CODE_ALPHABET.includes(c)) ? code : null;
+  }
+
+  function publisherCodeFileName(state) {
+    return `${safeFilePart(state.tournamentName, 'tournament')}_${tournamentDate(state.startedAt)}.publisher-code.txt`;
+  }
+
+  function publisherCodeFile({ state, code, viewerUrl }) {
+    return [
+      'Foos Tourney publisher code',
+      `Tournament: ${state.tournamentName}`,
+      `Tournament id: ${state.tournamentId}`,
+      `Code: ${formatPublisherCode(code)}`,
+      `Viewer link: ${viewerUrl}`,
+      '',
+      'Keep this file private: anyone with it can take over publishing.',
+      'To take over, open Publishing > Take over publishing and choose this file.',
+      ''
+    ].join('\n');
+  }
+
+  // Returns { tournamentId, code } or { error }.
+  function parsePublisherCodeFile(text) {
+    const field = name => {
+      const match = new RegExp(`^${name}: *(.+)$`, 'm').exec(text);
+      return match ? match[1].trim() : null;
+    };
+    const tournamentId = field('Tournament id');
+    const code = normalizePublisherCode(field('Code'));
+    if (!tournamentId || !REMOTE_ID_PATTERN.test(tournamentId) || !code) {
+      return { error: "This file isn't a Foos Tourney publisher code file." };
+    }
+    return { tournamentId, code };
+  }
+
+  // This browser's publishing record: { tournamentId, slot, code } or null.
+  function loadPublishing(storage) {
+    let saved = null;
+    try {
+      saved = JSON.parse(storage.getItem(PUBLISHING_KEY));
+    } catch {
+      return null;
+    }
+    const valid =
+      isPlainObject(saved) &&
+      typeof saved.tournamentId === 'string' &&
+      Number.isInteger(saved.slot) &&
+      normalizePublisherCode(saved.code) === saved.code;
+    return valid ? { tournamentId: saved.tournamentId, slot: saved.slot, code: saved.code } : null;
+  }
+
+  function savePublishing(storage, record) {
+    try {
+      if (record) storage.setItem(PUBLISHING_KEY, JSON.stringify(record));
+      else storage.removeItem(PUBLISHING_KEY);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function remoteTournamentUrl(href, id) {
+    const url = new URL(href);
+    url.searchParams.delete('display');
+    url.searchParams.set('remote', id);
+    return url.toString();
+  }
+
+  // The published tournament a ?remote=<id> link asks for, or null.
+  function remoteIdFromSearch(search) {
+    const id = new URLSearchParams(search).get('remote');
+    return id && REMOTE_ID_PATTERN.test(id) ? id : null;
+  }
+
   return {
     // sanitization & admin
     sanitizeInput,
@@ -2219,6 +2498,37 @@ globalThis.TournamentLogic = (() => {
     nudgeSplit,
     loadDisplayLayout,
     saveDisplayLayout,
-    isTournamentStorageKey
+    isTournamentStorageKey,
+    // publishing (Firebase)
+    PUBLISH_SLOTS,
+    SLOT_TTL_MS,
+    PUBLISH_INTERVAL_MS,
+    SERVER_TIME,
+    PUBLISHING_KEY,
+    watchedSections,
+    watchedChanged,
+    publishThrottle,
+    publishedExport,
+    publishedDocument,
+    isSlotExpired,
+    nextFreeSlot,
+    heldSlot,
+    publishDecision,
+    claimWrites,
+    replaceWrites,
+    publishWrites,
+    takeOverWrites,
+    publishedList,
+    displayChoices,
+    generatePublisherCode,
+    formatPublisherCode,
+    normalizePublisherCode,
+    publisherCodeFileName,
+    publisherCodeFile,
+    parsePublisherCodeFile,
+    loadPublishing,
+    savePublishing,
+    remoteTournamentUrl,
+    remoteIdFromSearch
   };
 })();

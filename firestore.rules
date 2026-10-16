@@ -2,7 +2,7 @@ rules_version = '2';
 
 // Publishing rules for Foos Tourney. See docs/firebase-plan.md.
 //
-// tournaments/{id}  public   ownerUid, slot, updatedAt, name, startedAt, export
+// tournaments/{id}  public   ownerUid, slot, updatedAt, name, startedAt, export (JSON text)
 // slots/{1..5}      public   tournamentId, ownerUid
 // owners/{uid}      public   slot, tournamentId (one slot per browser)
 // secrets/{id}      private  code (the publisher code)
@@ -70,16 +70,24 @@ service cloud.firestore {
 
     // ---------- tournaments ----------
 
+    // export is the Export JSON file text (Firestore can't store the bracket's
+    // nested arrays). JSON escapes quotes inside strings, so a player name
+    // can't fake the "adminPin": null field.
+    function publishedExport(text) {
+      return text is string
+        && text.size() <= 900000
+        && text.matches('(?s)\\{\\s*"format": "foos-tourney",.*')
+        && text.matches('(?s).*"adminPin": null.*')
+        && !text.matches('(?s).*"adminPin": ".*');
+    }
+
     function validTournament(t) {
       return exactly(t, ['ownerUid', 'slot', 'updatedAt', 'name', 'startedAt', 'export'])
         && t.slot is int && t.slot >= 1 && t.slot <= 5
         && t.updatedAt == request.time
         && t.name is string && t.name.size() <= 200
         && t.startedAt is string && t.startedAt.size() <= 40
-        && t.export is map
-        && t.export.format == 'foos-tourney'
-        && t.export.tournament is map
-        && t.export.tournament.adminPin == null;
+        && publishedExport(t.export);
     }
 
     function slotAfterHolds(n, id) {
