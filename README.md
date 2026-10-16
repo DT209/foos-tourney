@@ -3,6 +3,76 @@
 Calgary Foosball Club tournament manager: Monster/DYP open play with fair
 matchmaking, then single, double or championship elimination brackets.
 
+## Features at a glance
+
+```mermaid
+mindmap
+  root((Foos Tourney))
+    Setup
+      Tournament name and tables
+      Match format and games per match
+    Roster
+      Add Player with autocomplete
+      Add from Leaderboard picker
+      Guests confirmed first
+      Paid and Active toggles
+      Rename and remove
+    Monster / open play
+      Draw New Match with fair matchmaking
+      Free table assigned
+      Game scores and handicap
+      Match history and CSV Export
+    Brackets
+      Single, double or championship
+      Team formation and seeding
+      Manual pairings
+      Table assignment and standings
+    Saving
+      Auto-save per tournament
+      New Tournament
+      Saved Tournaments
+      Export, Import, read-only view
+    Admin Lock
+      PIN guards against accidental edits
+```
+
+## Typical tournament night
+
+```mermaid
+flowchart TD
+    A["Open TournamentManager.html"] --> B["Set name, tables, match format"]
+    B --> C["Add players: Add Player or Add from Leaderboard"]
+    C --> D["Draw New Match"]
+    D --> E["Enter game scores, then Complete"]
+    E --> F{"Enough Monster play?"}
+    F -- No --> D
+    F -- Yes --> G["Draw Brackets"]
+    G --> H["Play bracket matches, then Confirm"]
+    H --> I["Standings"]
+    I --> J["CSV Export and Saved Tournaments Export"]
+```
+
+## Playing a bracket
+
+Each match card moves through these states. Tables are assigned automatically from the **Tables
+Available** setting.
+
+```mermaid
+flowchart TD
+    P["Pending: a team is still unknown"] -->|"both teams known"| R["Ready"]
+    R -->|"free table"| T["On a table"]
+    T -->|"scores entered"| S["Confirm (Winner: Team N)"]
+    S --> D["Done"]
+    D --> W["Winner advances to the next round"]
+    D --> L{"Double or championship?"}
+    L -- Yes --> LB["Loser drops to the Losers Bracket"]
+    L -- "Single, semi-final" --> TP["Loser plays the 3rd Place Match"]
+    W --> G{"Double: Losers Bracket champion wins Grand Final 1?"}
+    G -- Yes --> RS["Grand Finals Bracket Reset added"]
+    G -- No --> F["Bracket complete when the last match is done"]
+    RS --> F
+```
+
 ## Working with Claude Code
 
 Project conventions for AI-assisted changes (architecture rules, coverage and
@@ -86,10 +156,39 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 - Private browsing or blocked site data disables auto-save, and the footer says so.
 - Saves from before tournaments had ids are migrated automatically on first load.
 
+```mermaid
+flowchart TD
+    A["Any change"] --> B["Auto-save to this browser"]
+    NT["New Tournament"] --> B
+    B --> SV["Saved Tournaments"]
+    SV --> O["Open"]
+    SV --> X["Export: .json file"]
+    SV --> DEL["Delete (not the current one)"]
+    SV --> IM["Import…"]
+    IM --> SRC{"Source"}
+    SRC -- "From a file" --> REV["Review contents"]
+    SRC -- "From Firebase" --> FB["Not built yet"]
+    REV --> ADD["Add to Saved Tournaments"]
+    REV --> EX{"Already saved?"}
+    EX -- Yes --> RP["Replace Saved Copy or Keep Both"]
+    REV --> RO["View Read-only: nothing is saved"]
+    RO --> CV["Close View returns to your tournament"]
+```
+
 ## Admin lock
 
 - Each tournament has its own lock. The first **Admin Lock** asks for a 4-8 digit PIN. The lock prevents accidental edits on a shared
   screen. It isn't security: **Forgot PIN?** unlocks after a confirm.
+
+```mermaid
+stateDiagram-v2
+    [*] --> NoPin
+    NoPin --> Locked: Admin Lock and set a 4-8 digit PIN
+    Locked --> Unlocked: Unlock with correct PIN
+    Unlocked --> Locked: Admin Lock with correct PIN
+    Locked --> NoPin: Forgot PIN and confirm
+    Unlocked --> NoPin: Forgot PIN and confirm
+```
 
 ## Club leaderboard
 

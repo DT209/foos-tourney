@@ -1,6 +1,8 @@
 # Foos Tourney: guidance for Claude
 
 Calgary Foosball Club tournament manager. See `README.md` for layout, deploy and commands.
+See `.claude/Flow.md` for diagrams of how `tournament-logic.js` and the page fit together. Keep it in sync
+when the module's flow changes.
 
 ## Architecture rules
 
