@@ -73,6 +73,14 @@ describe('admin lock dialog', () => {
   });
 });
 
+describe('page icon', () => {
+  it('uses the club site favicon', async () => {
+    app = await openApp();
+    const icon = await app.page.$eval('link[rel="icon"]', l => ({ href: l.getAttribute('href'), type: l.type }));
+    assert.deepEqual(icon, { href: 'https://calgaryfoosballclub.com/favicon.ico', type: 'image/x-icon' });
+  });
+});
+
 describe('club logo', () => {
   it('hides itself if the image fails to load', async () => {
     app = await openApp({ blockLogo: true });
