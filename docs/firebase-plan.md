@@ -17,21 +17,21 @@ history**. `localStorage` stays the source of truth.
 
 ## Assumptions (agreed)
 
-| Topic          | Decision                                                                                                                                                    |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| When it starts | Pressing **New Tournament** publishes the new tournament at once. A tournament the page creates on its own (a browser's first visit) stays local.           |
-| What is sent   | The whole tournament as JSON (the **Export JSON** envelope), including paid flags. Only the admin PIN and lock are left out: they belong to one device.     |
-| When it's sent | At the start, then only when table status, the leaderboard or match history change, at most once every 5 seconds. Other edits ride along in the next write. |
-| Who can read   | Anyone. Every listener gets the same document.                                                                                                              |
-| Identity       | Firebase **Anonymous Authentication**: each browser gets a silent `uid`, with no login screen or account.                                                   |
-| Publisher      | The browser that starts the tournament owns it (`ownerUid`). Only the owner can change it.                                                                  |
-| Capacity       | **5 slots** in total, and **one slot per browser**. If the browser already publishes a tournament, New Tournament asks whether to replace it.               |
-| Expiry         | A slot expires **24 hours after the publisher's last published change**. Anyone can then claim it, which removes the old tournament.                        |
-| Abuse controls | **No CAPTCHA / App Check.**                                                                                                                                 |
-| Hand-over      | A **publisher code** lets another browser take over publishing.                                                                                             |
-| Display Mode   | Opens with a list to pick from: this device's tournament (read locally) and the published tournaments (read from Firebase).                                 |
-| Plan           | Firebase free (Spark) plan. No Cloud Functions, so everything is enforced by security rules.                                                                |
-| Future         | Google sign-in, linked to the anonymous account (see [Future: Google sign-in](#future-google-sign-in)).                                                     |
+| Topic          | Decision                                                                                                                                                                               |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| When it starts | Pressing **New Tournament** publishes the new tournament at once. A tournament the page creates on its own (a browser's first visit) stays local.                                      |
+| What is sent   | The whole tournament as JSON (the **Export JSON** envelope), including paid flags. Only the admin PIN and lock are left out: they belong to one device.                                |
+| When it's sent | At the start, then only when table status, the leaderboard or match history change, at most once every 5 seconds. Other edits ride along in the next write.                            |
+| Who can read   | Anyone. Every listener gets the same document.                                                                                                                                         |
+| Identity       | Firebase **Anonymous Authentication**: each browser gets a silent `uid`, with no login screen or account.                                                                              |
+| Publisher      | The browser that starts the tournament owns it (`ownerUid`). Only the owner can change it.                                                                                             |
+| Capacity       | **5 slots** in total, and **one slot per browser**. If the browser already publishes a tournament, New Tournament asks whether to replace it.                                          |
+| Expiry         | A slot expires **24 hours after the publisher's last published change**. Anyone can then claim it, which removes the old tournament.                                                   |
+| Abuse controls | **No CAPTCHA / App Check.**                                                                                                                                                            |
+| Hand-over      | A **publisher code** lets another browser take over publishing.                                                                                                                        |
+| Display Mode   | Opens with a list to pick from, in the same tab and in second-screen windows: this device's tournament (the default, read locally) and the published tournaments (read from Firebase). |
+| Plan           | Firebase free (Spark) plan. No Cloud Functions, so everything is enforced by security rules.                                                                                           |
+| Future         | Google sign-in, linked to the anonymous account (see [Future: Google sign-in](#future-google-sign-in)).                                                                                |
 
 ## Everything sent to Firebase
 
@@ -195,7 +195,8 @@ stateDiagram-v2
 
 ## Display Mode tournament list
 
-Pressing **Display Mode** first shows a list to pick from:
+Pressing **Display Mode**, or opening a second-screen window (**Open on Another Screen** or `?display`),
+first shows a list to pick from. **This device** is selected by default:
 
 | Entry                     | Source and behaviour                                                                                                                                    |
 | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -208,8 +209,11 @@ Pressing **Display Mode** first shows a list to pick from:
   picking it works as today.
 - The board's header gets **Switch tournament** to return to the list, next to **Open on Another
   Screen** and **Exit Display**.
-- **Open on Another Screen** and `?display` windows open straight to this device's tournament, as today.
-  `?remote=<id>` links open straight to that published tournament.
+- Second-screen windows show the same list with **This device** selected, so pressing **Show** (or
+  Enter) puts the local board up, as today. Any published tournament can be picked instead, and
+  **Switch tournament** works there too. A second-screen window following a published tournament reads
+  it from Firebase, not from this computer's storage.
+- `?remote=<id>` links skip the list and open straight to that published tournament.
 - Display Mode stays read-only for every entry. Nothing in it writes to Firebase or `localStorage`.
 
 ## Client changes
@@ -223,7 +227,8 @@ Pressing **Display Mode** first shows a list to pick from:
   the latest state.
 - `publishDecision(ownerRecord, slots, now)`: `claim` (no slot), `ask-replace` (this browser already
   publishes, with that tournament's name) or `full` (all 5 taken, with the next free time).
-- `displayChoices(localSummary, published)`: the Display Mode list, local first, with the local
+- `displayChoices(localSummary, published)`: the Display Mode and second-screen list, local first and
+  selected by default, with the local
   tournament removed from the published entries.
 - `generatePublisherCode(random)`, `formatPublisherCode(code)`, `normalizePublisherCode(input)`,
   `publisherCodeFile(state, code, viewerUrl)` and `parsePublisherCodeFile(text)`.
@@ -257,12 +262,12 @@ tests can assert exactly when something was sent.
 
 ## Testing
 
-| Layer          | How                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Module logic   | `node:test` unit tests, 100% coverage gate as today: watched changes, the published copy (PIN blanked, paid flags kept), `publishDecision`, `displayChoices`, codes and code files, slot selection and expiry.                                                                                                                                                                                                                                                                                                                                                           |
-| Security rules | `@firebase/rules-unit-testing` against the local Firestore emulator: every allowed and denied case in the rules table, one slot per browser (a second claim fails, Replace succeeds, a stale owner record doesn't block), expiry with mocked timestamps, races between two claimers, take-over with right and wrong codes, extra fields and a non-null PIN rejected.                                                                                                                                                                                                     |
-| UI             | Puppeteer tests with a recording fake remote. **Nothing is sent before New Tournament**, and the first-visit tournament never publishes. Unwatched edits send nothing until a watched change carries them. Writes are throttled. The replace question (Replace and Keep current). Slot full. Code shown, copied and saved. Take-over, typed and from the file, including giving up a held slot. Display Mode list: local first and read locally, published entries live, Switch tournament, Firebase unavailable. From Firebase import. The 100% UI-function gate stays. |
-| End to end     | A small smoke suite against the emulator (real SDK, real rules), run in CI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Layer          | How                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Module logic   | `node:test` unit tests, 100% coverage gate as today: watched changes, the published copy (PIN blanked, paid flags kept), `publishDecision`, `displayChoices`, codes and code files, slot selection and expiry.                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Security rules | `@firebase/rules-unit-testing` against the local Firestore emulator: every allowed and denied case in the rules table, one slot per browser (a second claim fails, Replace succeeds, a stale owner record doesn't block), expiry with mocked timestamps, races between two claimers, take-over with right and wrong codes, extra fields and a non-null PIN rejected.                                                                                                                                                                                                                                                                                      |
+| UI             | Puppeteer tests with a recording fake remote. **Nothing is sent before New Tournament**, and the first-visit tournament never publishes. Unwatched edits send nothing until a watched change carries them. Writes are throttled. The replace question (Replace and Keep current). Slot full. Code shown, copied and saved. Take-over, typed and from the file, including giving up a held slot. Display Mode list: local first, selected by default and read locally, published entries live, Switch tournament, Firebase unavailable, the same list (local by default) in a second-screen window. From Firebase import. The 100% UI-function gate stays. |
+| End to end     | A small smoke suite against the emulator (real SDK, real rules), run in CI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 The emulator needs Java and `firebase-tools`. The build gets a **Firestore rules** step, skippable with
 `--skip-firebase` where the emulator isn't available, as `--skip-e2e` is for Chrome.
@@ -301,13 +306,13 @@ The emulator needs Java and `firebase-tools`. The build gets a **Firestore rules
 
 ## Decisions log
 
-| Question               | Decision                                                                                    |
-| ---------------------- | ------------------------------------------------------------------------------------------- |
-| What starts publishing | Pressing **New Tournament**. A browser's automatic first tournament stays local.            |
-| What is sent           | The whole tournament JSON, including paid flags. Not the PIN or lock.                       |
-| When it's sent         | At the start, then only when table status, the leaderboard or match history change.         |
-| One slot per browser   | Yes. A second New Tournament asks whether to replace the published one, using the new data. |
-| Display Mode           | Lists this device's tournament (read locally) and the published ones (read from Firebase).  |
-| Slots, expiry, CAPTCHA | 5 slots, 24 hours after the last published change, no CAPTCHA.                              |
-| Publisher code         | Per tournament, with **Save code to file**. Code files are git-ignored.                     |
-| Google sign-in         | Future.                                                                                     |
+| Question               | Decision                                                                                                                                          |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What starts publishing | Pressing **New Tournament**. A browser's automatic first tournament stays local.                                                                  |
+| What is sent           | The whole tournament JSON, including paid flags. Not the PIN or lock.                                                                             |
+| When it's sent         | At the start, then only when table status, the leaderboard or match history change.                                                               |
+| One slot per browser   | Yes. A second New Tournament asks whether to replace the published one, using the new data.                                                       |
+| Display Mode           | Lists this device's tournament (default, read locally) and the published ones (read from Firebase), in the same tab and in second-screen windows. |
+| Slots, expiry, CAPTCHA | 5 slots, 24 hours after the last published change, no CAPTCHA.                                                                                    |
+| Publisher code         | Per tournament, with **Save code to file**. Code files are git-ignored.                                                                           |
+| Google sign-in         | Future.                                                                                                                                           |
