@@ -75,6 +75,9 @@ when the module's flow changes.
 
 These match the README's Tournaments, Admin lock and Club leaderboard sections. Keep both in sync.
 
+Open bugs are listed in the README's **Known issues** table, one GitHub issue each. When you fix one, add a
+regression test, close the issue in the commit message (`Fixes #N`), and remove its row.
+
 - Tournaments are saved in one browser's `localStorage` only, not shared across devices or
   organizers. Private browsing or blocked site data disables saving, and the footer says so.
 - The admin PIN is stored in the browser and only guards against accidental edits. **Forgot PIN?**
