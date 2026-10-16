@@ -44,7 +44,7 @@ describe('drawFairMatch', () => {
     ];
     // Busy-set building tolerates malformed LIVE entries (checked before
     // history is built, which expects well-formed teams).
-    const messy = [match('LIVE', [player(3), null, { name: 'x' }], undefined), null];
+    const messy = [match('LIVE', [player(3), null, { name: 'x' }], undefined), match('LIVE', undefined, []), null];
     assert.match(L.drawFairMatch(roster.slice(0, 3), messy, '1v1').error, /Found 1/);
     const live = [match('LIVE', [player(3)], [])];
     const result = L.drawFairMatch(roster, live, '1v1', zero);
