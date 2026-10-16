@@ -46,12 +46,17 @@ sequenceDiagram
     Note over M: each field kept only if isValidField, else default from newTournamentState
     M-->>C: full state
     C->>C: useState initial values from restored
+    C->>M: recentTournamentPlayers(storage, tournamentId) in useMemo
+    M->>S: read saved records, 3 most recently started, not the current one
+    M-->>C: recent players
     C->>M: fetchLeaderboardPlayers() in an effect
     alt fetch succeeds
         M-->>C: live players, status live
     else fails (CORS, offline)
         C->>C: keep FALLBACK_LEADERBOARD_PLAYERS, status cached
     end
+    C->>M: withRecentPlayers(leaderboardPlayers, recentPlayers) on each render
+    M-->>C: knownPlayers
 ```
 
 `migrateLegacyTournament` assigns a new UUID, turns `startDate` into a local-midnight
@@ -173,11 +178,14 @@ flowchart TD
     SV --> PT["set currentTournament pointer"]
     WR --> K1
     PT --> K2
-    LT["listTournaments"] --> K1
+    RR["readTournamentRecords: skips corrupt records"] --> K1
+    LT["listTournaments"] --> RR
+    RP["recentTournamentPlayers"] --> RR
     DT["deleteTournament"] --> K1
     DT -->|"if current"| K2
     EXP["serializeTournamentExport, tournamentExportFileName, downloadText"] --> FILE[".json file"]
-    FILE --> PARSE["parseTournamentExport: format, version, id, restoreTournamentState"]
+    FILE --> PARSE["parseTournamentExport: format, version, id, invalidFields"]
+    PARSE -->|"any invalid field"| REJ["{ error } naming the field"]
     PARSE --> RV{"Import dialog"}
     RV -- "importIntoSaved(add, replace, copy)" --> ST["storeImportedTournament: writeTournamentRecord only"]
     ST --> K1
@@ -185,9 +193,31 @@ flowchart TD
     RO -->|"closeReadOnlyView"| PR["applyTournament(previous)"]
 ```
 
-`storeImportedTournament` never changes the current pointer. Replacing the open tournament calls
+`restoreTournamentState` falls back to the default for an invalid saved field, and loads a tournament
+that is locked without a PIN as unlocked. `storeImportedTournament` never changes the current pointer. Replacing the open tournament calls
 `applyTournament` so the next auto-save doesn't overwrite the import. `saveTournament` returns
 `false` when storage throws, and the footer then shows that saving is off.
+
+## 7. Adding players
+
+```mermaid
+flowchart TD
+    LB["leaderboardPlayers: live fetch or fallback snapshot"] --> KP["knownPlayers = withRecentPlayers(leaderboard, recent)"]
+    RC["recentPlayers: recentTournamentPlayers, memoized"] --> KP
+    KP -->|"recent players not on the leaderboard get recent: true"| USE{"Where"}
+    USE -- "typing" --> SUG["getPlayerSuggestions(knownPlayers, text)"]
+    USE -- "Add Player submit" --> CHK["checkNewPlayerName(text, players, knownPlayers)"]
+    CHK -->|"blank or duplicate"| ERR["alert(error)"]
+    CHK -->|"onLeaderboard true: leaderboard or recent"| ADD["addPlayer(players, Date.now(), name)"]
+    CHK -->|"onLeaderboard false"| GC["Guest confirm: Add Anyway"]
+    GC --> ADD
+    USE -- "Add from Leaderboard" --> PV["getLeaderboardPickerView(players, knownPlayers, selection)"]
+    PV --> ROWS["Leaderboard rows, then a Recent players section (rows with recent)"]
+    ROWS --> APN["addPlayersByName(players, selection, Date.now())"]
+```
+
+Renames go through `renamePlayer`, which returns `{ error }` for a name another player already has,
+so the roster never holds two players with the same name (case-insensitive).
 
 ## Module sections and main functions
 

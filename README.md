@@ -14,6 +14,7 @@ mindmap
     Roster
       Add Player with autocomplete
       Add from Leaderboard picker
+      Recent players from the last 3 tournaments
       Guests confirmed first
       Paid and Active toggles
       Rename and remove
@@ -41,9 +42,9 @@ mindmap
 ```mermaid
 flowchart TD
     A["Open TournamentManager.html"] --> B["Set name, tables, match format"]
-    B --> C["Add players: Add Player or Add from Leaderboard"]
+    B --> C["Add players: Add Player, Add from Leaderboard, or Recent players"]
     C --> D["Draw New Match"]
-    D --> E["Enter game scores, then Complete"]
+    D --> E["Enter game scores, then Finish Match"]
     E --> F{"Enough Monster play?"}
     F -- No --> D
     F -- Yes --> G["Draw Brackets"]
