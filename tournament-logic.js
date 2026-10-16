@@ -18,6 +18,13 @@ globalThis.TournamentLogic = (() => {
     return input.replace(/[<>]/g, '').trim().substring(0, maxLength);
   }
 
+  // For text typed into a live input: like sanitizeInput but without trimming,
+  // so a space typed between words survives the next keystroke.
+  function sanitizeTypedText(input, maxLength = 35) {
+    if (typeof input !== 'string') return '';
+    return input.replace(/[<>]/g, '').substring(0, maxLength);
+  }
+
   function sanitizeInt(input, fallback = 0) {
     const parsed = parseInt(input, 10);
     return isNaN(parsed) ? fallback : Math.max(0, parsed);
@@ -54,20 +61,29 @@ globalThis.TournamentLogic = (() => {
   }
 
   // ==========================================
-  // PERSISTENCE
+  // TOURNAMENTS & PERSISTENCE
   // ==========================================
-  // The tournament auto-saves to localStorage so a refresh or closed tab
-  // doesn't lose it. Saves are versioned; anything unreadable loads as null.
-  // None of these throw: private mode, blocked site data and full storage
-  // all degrade to "not saved".
+  // A tournament is identified by a UUID, not a date: events often run past
+  // midnight. Each tournament auto-saves to its own localStorage record
+  // (foosTourney.tournament.<uuid>) and a pointer names the current one, so
+  // past events can be reopened. Records are versioned; anything unreadable
+  // loads as null. None of these throw: private mode, blocked site data and
+  // full storage all degrade to "not saved".
 
-  const STORAGE_KEY = 'foosTourney.tournament';
-  const STORAGE_VERSION = 1;
+  const TOURNAMENT_KEY_PREFIX = 'foosTourney.tournament.';
+  const CURRENT_TOURNAMENT_KEY = 'foosTourney.currentTournament';
+  const LEGACY_STORAGE_KEY = 'foosTourney.tournament';
+  const STORAGE_VERSION = 2;
 
-  function defaultTournamentState(today) {
+  function createTournamentId(randomUUID = () => globalThis.crypto.randomUUID()) {
+    return randomUUID();
+  }
+
+  function newTournamentState(id, now) {
     return {
+      tournamentId: id,
+      startedAt: now.toISOString(),
       tournamentName: 'Thursday DYP',
-      startDate: today,
       tableCount: 2,
       format: '2v2',
       maxGames: 3,
@@ -86,10 +102,14 @@ globalThis.TournamentLogic = (() => {
     };
   }
 
+  const PERSISTED_FIELDS = Object.keys(newTournamentState('', new Date(0)));
+
   const isPlainObject = v => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-  // Fields whose valid type differs from their default's type.
+  // Fields whose valid type differs from (or is narrower than) their default's type.
   const FIELD_VALIDATORS = {
+    tournamentId: v => typeof v === 'string' && v.length > 0,
+    startedAt: v => typeof v === 'string' && !isNaN(Date.parse(v)),
     bracketData: v => v === null || isPlainObject(v),
     bracketTeamCount: v => typeof v === 'number' || typeof v === 'string',
     adminPin: v => v === null || typeof v === 'string'
@@ -101,42 +121,123 @@ globalThis.TournamentLogic = (() => {
     return typeof value === typeof fallback;
   }
 
-  // Full initial state: each saved field is kept only if it has a valid type.
-  function restoreTournamentState(saved, today) {
-    const state = defaultTournamentState(today);
+  // Full state for a saved tournament: each saved field is kept only if it
+  // has a valid type. With nothing saved, a new tournament with `id` and `now`.
+  function restoreTournamentState(saved, { id, now }) {
+    const state = newTournamentState(id, now);
     if (!saved) return state;
-    Object.keys(state).forEach(key => {
+    PERSISTED_FIELDS.forEach(key => {
       if (key in saved && isValidField(key, saved[key], state[key])) state[key] = saved[key];
     });
     return state;
   }
 
-  function saveTournament(storage, state) {
+  // YYYY-MM-DD in the browser's local time zone.
+  function localIsoDate(date = new Date()) {
+    const pad = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  // The local calendar day a tournament started on (used in exports).
+  function tournamentDate(startedAt) {
+    return localIsoDate(new Date(startedAt));
+  }
+
+  function readRecord(storage, key, version) {
+    const record = JSON.parse(storage.getItem(key));
+    if (!record || record.version !== version || !isPlainObject(record.state)) return null;
+    return record;
+  }
+
+  function saveTournament(storage, state, now = new Date()) {
     const persisted = {};
-    Object.keys(defaultTournamentState('')).forEach(key => {
+    PERSISTED_FIELDS.forEach(key => {
       persisted[key] = state[key];
     });
     try {
-      storage.setItem(STORAGE_KEY, JSON.stringify({ version: STORAGE_VERSION, state: persisted }));
+      const record = { version: STORAGE_VERSION, savedAt: now.toISOString(), state: persisted };
+      storage.setItem(TOURNAMENT_KEY_PREFIX + state.tournamentId, JSON.stringify(record));
+      storage.setItem(CURRENT_TOURNAMENT_KEY, state.tournamentId);
       return true;
     } catch {
       return false;
     }
   }
 
-  function loadTournament(storage) {
+  function loadTournament(storage, id) {
     try {
-      const saved = JSON.parse(storage.getItem(STORAGE_KEY));
-      if (!saved || saved.version !== STORAGE_VERSION || !isPlainObject(saved.state)) return null;
-      return saved.state;
+      const record = readRecord(storage, TOURNAMENT_KEY_PREFIX + id, STORAGE_VERSION);
+      return record && record.state;
     } catch {
       return null;
     }
   }
 
-  function clearTournament(storage) {
+  // Converts the v1 single-slot save (keyed by nothing but the browser) into
+  // a UUID-keyed tournament record. Its start date becomes local midnight.
+  function migrateLegacyTournament(storage, newId, now) {
+    const legacy = readRecord(storage, LEGACY_STORAGE_KEY, 1);
+    if (!legacy) return null;
+    const { startDate, ...rest } = legacy.state;
+    const startedAt = typeof startDate === 'string' ? new Date(`${startDate}T00:00:00`) : now;
+    const state = restoreTournamentState(
+      { ...rest, tournamentId: newId(), startedAt: startedAt.toISOString() },
+      {
+        id: '',
+        now
+      }
+    );
+    saveTournament(storage, state, now);
+    storage.removeItem(LEGACY_STORAGE_KEY);
+    return state;
+  }
+
+  // The tournament to resume on page load, or null to start a new one.
+  function loadCurrentTournament(storage, { newId = createTournamentId, now = new Date() } = {}) {
     try {
-      storage.removeItem(STORAGE_KEY);
+      const currentId = storage.getItem(CURRENT_TOURNAMENT_KEY);
+      if (currentId) return loadTournament(storage, currentId);
+      return migrateLegacyTournament(storage, newId, now);
+    } catch {
+      return null;
+    }
+  }
+
+  // Saved tournaments for the "Saved Tournaments" list, most recently saved first.
+  function listTournaments(storage) {
+    try {
+      const summaries = [];
+      for (let i = 0; i < storage.length; i++) {
+        const key = storage.key(i);
+        if (!key.startsWith(TOURNAMENT_KEY_PREFIX)) continue;
+        let record = null;
+        try {
+          record = readRecord(storage, key, STORAGE_VERSION);
+        } catch {
+          // Corrupt record: skip it.
+        }
+        if (!record) continue;
+        const { state } = record;
+        summaries.push({
+          id: state.tournamentId,
+          name: state.tournamentName,
+          startedAt: state.startedAt,
+          savedAt: record.savedAt,
+          playerCount: state.players.length,
+          matchCount: state.matches.length,
+          bracketType: state.bracketData ? state.bracketData.type : null
+        });
+      }
+      return summaries.sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+    } catch {
+      return [];
+    }
+  }
+
+  function deleteTournament(storage, id) {
+    try {
+      storage.removeItem(TOURNAMENT_KEY_PREFIX + id);
+      if (storage.getItem(CURRENT_TOURNAMENT_KEY) === id) storage.removeItem(CURRENT_TOURNAMENT_KEY);
       return true;
     } catch {
       return false;
@@ -1478,10 +1579,11 @@ globalThis.TournamentLogic = (() => {
     return (text.trim() || fallback).replace(/[^a-zA-Z0-9_-]/g, '_');
   }
 
-  // Normalizes completed Monster and bracket matches into one list:
+  // Normalizes completed Monster and bracket matches into one list, with ids
+  // prefixed by the tournament UUID so exports never collide across events:
   // { uniqueId, stage, winner, team1: [players], team2: [players], games, isHandicap: 'Yes'|'No' }
-  function getCompletedMatchesList(matches, bracketData, tournamentName, startDate) {
-    const prefix = `${safeFilePart(tournamentName, 'Tournament')}_${startDate}`;
+  function getCompletedMatchesList(matches, bracketData, tournamentId) {
+    const prefix = tournamentId;
     const allCompletedMatches = [];
 
     matches
@@ -1609,23 +1711,28 @@ globalThis.TournamentLogic = (() => {
     doc.body.removeChild(link);
   }
 
-  function todayIsoDate(now = new Date()) {
-    return now.toISOString().split('T')[0];
-  }
-
   return {
     // sanitization & admin
     sanitizeInput,
+    sanitizeTypedText,
     sanitizeInt,
     normalizeScoreInput,
     submitPin,
     forgetPin,
-    // persistence
-    STORAGE_KEY,
+    // tournaments & persistence
+    TOURNAMENT_KEY_PREFIX,
+    CURRENT_TOURNAMENT_KEY,
+    LEGACY_STORAGE_KEY,
+    createTournamentId,
+    newTournamentState,
     restoreTournamentState,
+    localIsoDate,
+    tournamentDate,
     saveTournament,
     loadTournament,
-    clearTournament,
+    loadCurrentTournament,
+    listTournaments,
+    deleteTournament,
     getBrowserStorage,
     // leaderboard
     FALLBACK_LEADERBOARD_PLAYERS,
@@ -1700,7 +1807,6 @@ globalThis.TournamentLogic = (() => {
     formatHistoryRow,
     buildCsv,
     csvFileName,
-    downloadCsv,
-    todayIsoDate
+    downloadCsv
   };
 })();

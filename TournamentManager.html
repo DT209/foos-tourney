@@ -60,8 +60,10 @@
 
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
-      sanitizeInput, submitPin, forgetPin, getLeaderboardInfo,
-      restoreTournamentState, saveTournament, loadTournament, getBrowserStorage, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
+      sanitizeTypedText, submitPin, forgetPin, getLeaderboardInfo,
+      createTournamentId, newTournamentState, restoreTournamentState, tournamentDate,
+      saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, getBrowserStorage,
+      fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
       countActivePlayers, hasPausedPlayers, computeStandings,
       togglePickerSelection, getLeaderboardPickerView, toggleSelectAll, getPlayerSuggestions,
@@ -71,8 +73,12 @@
       createBracket, clearMatchResults,
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
-      getCompletedMatchesList, formatHistoryRow, buildCsv, csvFileName, downloadCsv, todayIsoDate
+      getCompletedMatchesList, formatHistoryRow, buildCsv, csvFileName, downloadCsv
     } = window.TournamentLogic;
+
+    // e.g. "Fri, Oct 16, 11:40 PM" in the viewer's local time.
+    const formatStartedAt = (iso) =>
+      new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
     // ==========================================
     // REUSABLE MATCH CARD COMPONENT FOR BRACKET
@@ -94,7 +100,7 @@
       }[getMatchCardState(match)];
 
       return (
-        <div className={`bg-cfc-dark p-3.5 rounded-lg border-2 ${borderColor} space-y-3 shadow-md relative`}>
+        <div data-testid="match-card" className={`bg-cfc-dark p-3.5 rounded-lg border-2 ${borderColor} space-y-3 shadow-md relative`}>
           <div className="flex justify-between items-center text-xs border-b border-cfc-border/60 pb-1.5">
             <span className="font-bold text-gray-300">{match.label || `Match ${match.num}`}</span>
             {match.status === 'DONE' ? (
@@ -173,6 +179,7 @@
               </div>
 
               <button
+                data-testid="confirm-match"
                 onClick={onConfirm}
                 disabled={!calculatedWinner || locked}
                 className={`w-full py-1.5 rounded font-bold text-xs uppercase tracking-wider transition ${
@@ -194,21 +201,27 @@
     // ==========================================
 
     function FoosballApp() {
-      // Restore the tournament saved in this browser (or defaults) once, on load.
+      // Resume this browser's current tournament (or start a new one) once, on load.
       const [storage] = useState(() => getBrowserStorage());
-      const [restored] = useState(() => restoreTournamentState(loadTournament(storage), todayIsoDate()));
+      const [restored] = useState(() =>
+        restoreTournamentState(loadCurrentTournament(storage), { id: createTournamentId(), now: new Date() })
+      );
       const [isSaved, setIsSaved] = useState(true);
+
+      // Tournament identity: a UUID, not a date - events often run past midnight.
+      const [tournamentId, setTournamentId] = useState(restored.tournamentId);
+      const [startedAt, setStartedAt] = useState(restored.startedAt);
 
       // Configuration State
       const [tournamentName, setTournamentName] = useState(restored.tournamentName);
-      const [startDate, setStartDate] = useState(restored.startDate);
       const [tableCount, setTableCount] = useState(restored.tableCount);
       const [format, setFormat] = useState(restored.format);
       const [maxGames, setMaxGames] = useState(restored.maxGames);
       const [activeTab, setActiveTab] = useState(restored.activeTab);
       const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
       const [showClearMatchesWarning, setShowClearMatchesWarning] = useState(false);
-      const [showFullResetWarning, setShowFullResetWarning] = useState(false);
+      const [showNewTournamentWarning, setShowNewTournamentWarning] = useState(false);
+      const [savedTournaments, setSavedTournaments] = useState(null);
       
       // Admin Lock State - tool is fully unlocked (editable) by default.
       // The first lock sets the PIN; after that the PIN toggles View Only mode.
@@ -263,11 +276,11 @@
       // --- AUTO-SAVE ---
       useEffect(() => {
         setIsSaved(saveTournament(storage, {
-          tournamentName, startDate, tableCount, format, maxGames, activeTab,
+          tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
           teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin
         }));
-      }, [storage, tournamentName, startDate, tableCount, format, maxGames, activeTab,
+      }, [storage, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
           teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin]);
 
@@ -379,15 +392,63 @@
       };
 
       // Starts a new tournament: today's date, empty roster, no matches.
-      const fullReset = () => {
-        setStartDate(todayIsoDate());
-        setMatches([]);
-        setBracketData(null);
-        setPlayers([]);
-        setShowFullResetWarning(false);
+      // Replaces everything on screen with `t` (a full tournament state) and
+      // closes any open dialogs. Auto-save then writes it under its own id.
+      const applyTournament = (t) => {
+        setTournamentId(t.tournamentId);
+        setStartedAt(t.startedAt);
+        setTournamentName(t.tournamentName);
+        setTableCount(t.tableCount);
+        setFormat(t.format);
+        setMaxGames(t.maxGames);
+        setActiveTab(t.activeTab);
+        setPlayers(t.players);
+        setMatches(t.matches);
+        setBracketData(t.bracketData);
+        setBracketTeamCount(t.bracketTeamCount);
+        setBracketElimType(t.bracketElimType);
+        setBracketMaxGames(t.bracketMaxGames);
+        setTeamFormationStrategy(t.teamFormationStrategy);
+        setSeedingStrategy(t.seedingStrategy);
+        setCustomTeams(t.customTeams);
+        setIsLocked(t.isLocked);
+        setAdminPin(t.adminPin);
+        setEditingPlayerId(null);
+        setPendingCustomPlayerName(null);
+        setShowNewTournamentWarning(false);
+        setSavedTournaments(null);
+        setShowWinnerModal(false);
       };
 
-      const completedMatchesList = getCompletedMatchesList(matches, bracketData, tournamentName, startDate);
+      // Starts a fresh tournament; the current one stays saved under its id.
+      const startNewTournament = () => {
+        applyTournament(newTournamentState(createTournamentId(), new Date()));
+      };
+
+      // --- SAVED TOURNAMENTS ---
+      const openSavedTournaments = () => {
+        setSavedTournaments(listTournaments(storage));
+      };
+
+      const openTournament = (id) => {
+        const saved = loadTournament(storage, id);
+        if (!saved) {
+          alert('That tournament could not be loaded.');
+          setSavedTournaments(listTournaments(storage));
+          return;
+        }
+        applyTournament(restoreTournamentState(saved, { id, now: new Date() }));
+      };
+
+      const handleDeleteTournament = (summary) => {
+        if (confirm(`Delete "${summary.name}"? Its roster, matches and bracket will be gone for good.`)) {
+          deleteTournament(storage, summary.id);
+          setSavedTournaments(listTournaments(storage));
+        }
+      };
+
+      const completedMatchesList = getCompletedMatchesList(matches, bracketData, tournamentId);
+      const startDate = tournamentDate(startedAt);
 
       // --- EXPORT TO EXCEL (CSV) ---
       const exportToCSV = () => {
@@ -585,7 +646,7 @@
 
             {/* Mobile Dropdown Menu */}
             {isMobileMenuOpen && (
-              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-start pt-16 p-4 lg:hidden">
+              <div data-testid="mobile-menu" className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-start pt-16 p-4 lg:hidden">
                 <div className="bg-cfc-panel border border-cfc-border rounded-xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
                   <div className="flex justify-between items-center border-b border-cfc-border pb-3">
                     <h3 className="text-white font-black uppercase text-sm tracking-wider">Tournament Options</h3>
@@ -706,7 +767,7 @@
 
             {showPausedWarningModal && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                <div data-testid="paused-warning" className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
                   <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
                     <span>⚠️</span> Paused Players Detected
                   </h3>
@@ -797,6 +858,8 @@
                         return (
                           <label
                             key={lp.name}
+                            data-testid="picker-option"
+                            data-name={lp.name}
                             className={`flex items-center gap-3 px-3 py-2.5 rounded border text-sm transition ${
                               alreadyAdded
                                 ? 'bg-cfc-dark/40 border-cfc-border/40 text-gray-500 cursor-not-allowed'
@@ -868,27 +931,87 @@
               </div>
             )}
 
-            {showFullResetWarning && (
+            {showNewTournamentWarning && (
               <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                <div className="bg-cfc-panel border border-rose-700 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
-                  <h3 className="text-lg font-bold text-rose-400 flex items-center gap-2">
-                    <span>⚠️</span> Full Tournament Reset?
+                <div className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <span>🆕</span> Start a New Tournament?
                   </h3>
                   <p className="text-xs text-gray-300">
-                    This will permanently delete every player on the roster, along with all matches and the playoff bracket, and starts a new tournament dated today. This cannot be undone.
+                    You'll get an empty roster with no matches or bracket. &ldquo;{tournamentName}&rdquo; stays saved in this browser and can be reopened from Saved Tournaments.
                   </p>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setShowFullResetWarning(false)}
+                      onClick={() => setShowNewTournamentWarning(false)}
                       className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
                     >
                       Cancel
                     </button>
                     <button
-                      onClick={fullReset}
-                      className="flex-1 bg-rose-700 hover:bg-rose-600 text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                      onClick={startNewTournament}
+                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
                     >
-                      Full Reset
+                      Start New Tournament
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {savedTournaments && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div data-testid="saved-tournaments" className="bg-cfc-panel border border-cfc-border rounded-xl max-w-md w-full max-h-[90vh] flex flex-col shadow-2xl">
+                  <div className="p-5 pb-3 border-b border-cfc-border">
+                    <h3 className="text-lg font-black text-white uppercase tracking-wide">Saved Tournaments</h3>
+                    <p className="text-[11px] text-gray-500">Stored in this browser only.</p>
+                  </div>
+                  <ul className="overflow-y-auto flex-1 p-3 space-y-2">
+                    {savedTournaments.length === 0 && (
+                      <li className="text-xs text-gray-500 italic p-3 text-center">
+                        {storage ? 'No saved tournaments yet.' : 'Saving is unavailable in this browser.'}
+                      </li>
+                    )}
+                    {savedTournaments.map(t => (
+                      <li
+                        key={t.id}
+                        data-testid="saved-tournament"
+                        data-tournament-id={t.id}
+                        className="bg-cfc-dark border border-cfc-border rounded p-3 flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-sm text-white truncate">{t.name}</div>
+                          <div className="text-[11px] text-gray-400">Started {formatStartedAt(t.startedAt)}</div>
+                          <div className="text-[11px] text-gray-500">
+                            {t.playerCount} players · {t.matchCount} matches{t.bracketType ? ` · ${t.bracketType} bracket` : ''}
+                          </div>
+                        </div>
+                        {t.id === tournamentId ? (
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400 border border-emerald-700 rounded px-2 py-0.5">Current</span>
+                        ) : (
+                          <div className="flex gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => openTournament(t.id)}
+                              className="bg-cfc-red hover:bg-cfc-redHover text-white text-xs px-2.5 py-1 rounded font-semibold"
+                            >
+                              Open
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTournament(t)}
+                              className="bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 text-xs px-2.5 py-1 rounded"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="p-3 border-t border-cfc-border">
+                    <button
+                      onClick={() => setSavedTournaments(null)}
+                      className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold"
+                    >
+                      Close
                     </button>
                   </div>
                 </div>
@@ -945,7 +1068,8 @@
                   <div className="space-y-3 text-xs">
                     <div>
                       <label className="text-gray-300 block mb-1 font-semibold">Number of Teams</label>
-                      <input 
+                      <input
+                        data-testid="team-count-input" 
                         type="number"
                         min="2"
                         max="64"
@@ -967,7 +1091,8 @@
                       <label className="text-gray-300 block mb-1 font-semibold">Elimination Format</label>
                       <select 
                         value={bracketElimType}
-                        onChange={e => setBracketElimType(e.target.value)}
+                        data-testid="elim-select"
+                          onChange={e => setBracketElimType(e.target.value)}
                         className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
                       >
                         <option value="single">Single Elimination</option>
@@ -980,7 +1105,8 @@
                       <label className="text-gray-300 block mb-1 font-semibold">Max Games / Match (Best of N)</label>
                       <select 
                         value={bracketMaxGames}
-                        onChange={e => setBracketMaxGames(Number(e.target.value))}
+                        data-testid="bracket-games-select"
+                          onChange={e => setBracketMaxGames(Number(e.target.value))}
                         className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
                       >
                         <option value={1}>Best of 1</option>
@@ -995,6 +1121,7 @@
                         <label className="text-gray-300 block mb-1 font-semibold">Team Formation Strategy</label>
                         <select 
                           value={teamFormationStrategy}
+                          data-testid="formation-select"
                           onChange={e => setTeamFormationStrategy(e.target.value)}
                           className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
                         >
@@ -1011,7 +1138,8 @@
                       <label className="text-gray-300 block mb-1 font-semibold">Seeding Strategy</label>
                       <select 
                         value={seedingStrategy}
-                        onChange={e => setSeedingStrategy(e.target.value)}
+                        data-testid="seeding-select"
+                          onChange={e => setSeedingStrategy(e.target.value)}
                         className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
                       >
                         <option value="ranking">Tournament Ranking</option>
@@ -1026,7 +1154,7 @@
                         {customTeams.map((team, idx) => {
                           const available = getManualTeamCandidates(sortedPlayers, bracketTeamCount);
                           return (
-                            <div key={idx} className="bg-cfc-dark p-2 rounded border border-cfc-border flex items-center gap-2">
+                            <div key={idx} data-testid="manual-team" className="bg-cfc-dark p-2 rounded border border-cfc-border flex items-center gap-2">
                               <span className="font-bold text-gray-400 w-16">Team {idx + 1}:</span>
                               <select 
                                 value={team.p1 ? team.p1.id : ''}
@@ -1117,16 +1245,18 @@
                         <input
                           type="text"
                           value={tournamentName}
-                          onChange={e => setTournamentName(sanitizeInput(e.target.value, 35))}
+                          onChange={e => setTournamentName(sanitizeTypedText(e.target.value, 35))}
                           placeholder="e.g. Friday Night Open"
                           disabled={isLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
                         />
+                        <p data-testid="tournament-started" className="text-[11px] text-gray-500 mt-1">Started {formatStartedAt(startedAt)}</p>
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 block mb-1">Tables Available</label>
                         <select
                           value={tableCount}
+                          data-testid="table-count-select"
                           onChange={e => setTableCount(parseInt(e.target.value, 10))}
                           disabled={isLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
@@ -1140,6 +1270,7 @@
                         <label className="text-xs text-gray-400 block mb-1">Match Format</label>
                         <select
                           value={format}
+                          data-testid="format-select"
                           onChange={e => setFormat(e.target.value)}
                           disabled={isLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
@@ -1153,6 +1284,7 @@
                         <label className="text-xs text-gray-400 block mb-1">Max Games / Match (Best of N)</label>
                         <select
                           value={maxGames}
+                          data-testid="max-games-select"
                           onChange={e => setMaxGames(Number(e.target.value))}
                           disabled={isLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
@@ -1176,7 +1308,7 @@
                     </div>
 
                     <div className="pt-4 border-t border-cfc-border space-y-2">
-                      <span className="text-xs text-gray-400 block font-semibold uppercase tracking-wider">Tournament Resets</span>
+                      <span className="text-xs text-gray-400 block font-semibold uppercase tracking-wider">Tournaments</span>
                       <div className="flex gap-2">
                         <button
                           onClick={() => setShowClearMatchesWarning(true)}
@@ -1186,13 +1318,20 @@
                           Clear Matches
                         </button>
                         <button
-                          onClick={() => setShowFullResetWarning(true)}
+                          onClick={() => setShowNewTournamentWarning(true)}
                           disabled={isLocked}
                           className="flex-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/80 text-rose-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          Full Reset
+                          New Tournament
                         </button>
                       </div>
+                      <button
+                        onClick={openSavedTournaments}
+                        disabled={isLocked}
+                        className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Saved Tournaments
+                      </button>
                     </div>
                   </div>
 
@@ -1227,6 +1366,7 @@
                               {matches.map(lp => (
                                 <div
                                   key={lp.name}
+                                  data-testid="player-suggestion"
                                   onMouseDown={() => { setNewPlayerName(lp.name); setShowPlayerSuggestions(false); }}
                                   className="px-3 py-1.5 text-sm text-white hover:bg-cfc-panelLight cursor-pointer border-b border-cfc-border/60 last:border-b-0"
                                 >
@@ -1257,7 +1397,7 @@
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[358px] overflow-y-auto pt-2">
                       {players.map(p => (
-                        <div key={p.id} className={`p-2.5 rounded border flex items-center justify-between gap-2 text-sm transition ${p.active ? 'bg-cfc-dark border-cfc-border' : 'bg-cfc-dark/40 border-cfc-border/40 opacity-50'}`}>
+                        <div key={p.id} data-testid="player-row" data-player-name={p.name} className={`p-2.5 rounded border flex items-center justify-between gap-2 text-sm transition ${p.active ? 'bg-cfc-dark border-cfc-border' : 'bg-cfc-dark/40 border-cfc-border/40 opacity-50'}`}>
 
                           {editingPlayerId === p.id ? (
                             <div className="flex gap-1 flex-1 min-w-0">
@@ -1338,7 +1478,7 @@
                             </button>
                             {openActionMenuId === p.id && (
                               <React.Fragment>
-                                <div className="fixed inset-0 z-30" onClick={() => setOpenActionMenuId(null)}></div>
+                                <div data-testid="action-menu-backdrop" className="fixed inset-0 z-30" onClick={() => setOpenActionMenuId(null)}></div>
                                 <div className="absolute right-0 top-full mt-1 z-40 bg-cfc-panel border border-cfc-border rounded-lg shadow-2xl p-2 flex flex-col gap-1.5 w-max">
                                   <button
                                     onClick={() => { togglePaid(p.id); setOpenActionMenuId(null); }}
@@ -1391,7 +1531,7 @@
                       const calculatedWinner = activeMatch ? getMatchWinner(activeMatch) : null;
 
                       return (
-                        <div key={tableNum} className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
+                        <div key={tableNum} data-testid="live-table" className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
                           <div className="flex justify-between items-center border-b border-cfc-border pb-3">
                             <span className="font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
                               <span className="text-cfc-red">●</span> Table #{tableNum}
@@ -1497,7 +1637,7 @@
                   <h2 className="text-xl font-black mb-4 text-white uppercase tracking-wide border-b border-cfc-border pb-2">
                     Leaderboard
                   </h2>
-                  <div className="overflow-x-auto">
+                  <div data-testid="standings" className="overflow-x-auto">
                     <table className="w-full text-left text-sm">
                       <thead className="bg-cfc-dark text-gray-400 uppercase text-[11px] tracking-wider border-b border-cfc-border">
                         <tr>
@@ -1532,7 +1672,7 @@
                 </div>
 
                 {/* Match History Table */}
-                <div className="bg-cfc-panel rounded-xl border border-cfc-border p-5 shadow-lg space-y-4">
+                <div data-testid="match-history" className="bg-cfc-panel rounded-xl border border-cfc-border p-5 shadow-lg space-y-4">
                   <div className="flex justify-between items-center border-b border-cfc-border pb-2">
                     <h2 className="text-xl font-black text-white uppercase tracking-wide">
                       Match History
@@ -1632,7 +1772,7 @@
                     </div>
 
                     {/* LIVE TABLE MATCHES - BRACKET STAGE */}
-                    <div>
+                    <div data-testid="bracket-live">
                       <h2 className="text-xl font-black mb-4 text-white uppercase tracking-wide flex items-center gap-2">
                         <span className="text-cfc-red">●</span> LIVE TABLE MATCHES
                       </h2>
@@ -1680,7 +1820,7 @@
                         </h2>
                       </div>
 
-                      <div className="space-y-3">
+                      <div data-testid="bracket-winners" className="space-y-3">
                         <h3 className="text-base font-black text-white uppercase tracking-wider border-b border-cfc-border pb-1">Winners Bracket</h3>
                         <div className="flex gap-8 items-stretch min-w-max pt-2">
                           {(bracketData.type === 'championship' ? bracketData.winnersRounds.slice(0, -1) : bracketData.winnersRounds).map((roundMatches, rIdx) => (
@@ -1708,7 +1848,7 @@
                       {bracketData.type === 'single' && (
                         <div className="space-y-6 pt-6 border-t border-cfc-border">
                           {bracketData.grandFinals && (
-                            <div className="space-y-3">
+                            <div data-testid="bracket-grand-finals" className="space-y-3">
                               <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
                               <div className="flex gap-6 items-start pt-2">
                                 <div className="w-80">
@@ -1726,7 +1866,7 @@
                           )}
 
                           {bracketData.thirdPlaceMatch && (
-                            <div className="space-y-3">
+                            <div data-testid="bracket-third-place" className="space-y-3">
                               <h3 className="text-base font-black text-amber-400 uppercase tracking-wider border-b border-cfc-border pb-1">3rd Place Match</h3>
                               <div className="flex gap-6 items-start pt-2">
                                 <div className="w-80">
@@ -1746,7 +1886,7 @@
                       )}
 
                       {(bracketData.type === 'double' || bracketData.type === 'championship') && bracketData.losersRounds && bracketData.losersRounds.length > 0 && (
-                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                        <div data-testid="bracket-losers" className="space-y-3 pt-6 border-t border-cfc-border">
                           <h3 className="text-base font-black text-rose-400 uppercase tracking-wider border-b border-cfc-border pb-1">Losers Bracket</h3>
                           <div className="flex gap-8 items-stretch min-w-max pt-2">
                             {bracketData.losersRounds.map((roundMatches, rIdx) => (
@@ -1773,7 +1913,7 @@
                       )}
 
                       {bracketData.type === 'double' && bracketData.grandFinals && (
-                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                        <div data-testid="bracket-grand-finals" className="space-y-3 pt-6 border-t border-cfc-border">
                           <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
                           <div className="flex gap-6 items-start pt-2">
                             {bracketData.grandFinals.map((gfMatch, gfIdx) => (
@@ -1793,7 +1933,7 @@
                       )}
 
                       {bracketData.type === 'championship' && (
-                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                        <div data-testid="bracket-champ-final" className="space-y-3 pt-6 border-t border-cfc-border">
                           <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
                           <p className="text-[11px] text-gray-500 italic">
                             Championship Format: this is the Winners Bracket final - its winner takes 1st, runner-up takes 2nd.
@@ -1835,7 +1975,11 @@
     }
 
     const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<FoosballApp />);
+    root.render(
+      <React.StrictMode>
+        <FoosballApp />
+      </React.StrictMode>
+    );
   </script>
 </body>
 </html>

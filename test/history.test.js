@@ -19,15 +19,14 @@ const monsterDone = {
 };
 
 describe('getCompletedMatchesList', () => {
-  it('normalizes DONE Monster matches with defaults and a sanitized prefix', () => {
+  it('normalizes DONE Monster matches with defaults, ids prefixed by the tournament UUID', () => {
     const list = L.getCompletedMatchesList(
       [monsterDone, { id: 12, status: 'LIVE' }, { id: 13, status: 'DONE', winner: 1, isHandicap: false }],
       null,
-      ' Thu DYP! ',
-      '2026-10-16'
+      'tid-1'
     );
     assert.deepEqual(list[0], {
-      uniqueId: 'Thu_DYP__2026-10-16_MONSTER-11',
+      uniqueId: 'tid-1_MONSTER-11',
       stage: 'Monster',
       winner: 2,
       team1: [ann, bo],
@@ -36,7 +35,7 @@ describe('getCompletedMatchesList', () => {
       isHandicap: 'Yes'
     });
     assert.deepEqual(list[1], {
-      uniqueId: 'Thu_DYP__2026-10-16_MONSTER-13',
+      uniqueId: 'tid-1_MONSTER-13',
       stage: 'Monster',
       winner: 1,
       team1: [],
@@ -44,10 +43,6 @@ describe('getCompletedMatchesList', () => {
       games: [],
       isHandicap: 'No'
     });
-  });
-
-  it('falls back to "Tournament" for a blank name', () => {
-    assert.equal(L.getCompletedMatchesList([monsterDone], null, '  ', 'D')[0].uniqueId, 'Tournament_D_MONSTER-11');
   });
 
   it('collects DONE bracket matches in winners, losers, finals, 3rd place order', () => {
@@ -63,15 +58,10 @@ describe('getCompletedMatchesList', () => {
     L.confirmBracketMatch(b, 'thirdPlace', 0, 0);
     scoreFor(b.grandFinals[0], 1);
     L.confirmBracketMatch(b, 'grandFinals', 0, 0);
-    const list = L.getCompletedMatchesList([], b, 'X', 'D');
+    const list = L.getCompletedMatchesList([], b, 'X');
     assert.deepEqual(
       list.map(m => m.uniqueId),
-      [
-        'X_D_BRACKET-m-winners-1-0',
-        'X_D_BRACKET-m-winners-1-1',
-        'X_D_BRACKET-m-grandFinal-2-0',
-        'X_D_BRACKET-m-thirdPlace-2-1'
-      ]
+      ['X_BRACKET-m-winners-1-0', 'X_BRACKET-m-winners-1-1', 'X_BRACKET-m-grandFinal-2-0', 'X_BRACKET-m-thirdPlace-2-1']
     );
     assert.equal(list[0].stage, 'Playoffs');
     assert.deepEqual(
@@ -92,17 +82,17 @@ describe('getCompletedMatchesList', () => {
       isHandicap: true
     });
     b.losersRounds[1][0].status = 'DONE';
-    const [entry] = L.getCompletedMatchesList([], b, 'X', 'D');
+    const [entry] = L.getCompletedMatchesList([], b, 'X');
     assert.deepEqual(
       [entry.uniqueId, entry.team1, entry.team2, entry.games, entry.isHandicap],
-      ['X_D_BRACKET-m-losers-1-0', [solo], [], [], 'Yes']
+      ['X_BRACKET-m-losers-1-0', [solo], [], [], 'Yes']
     );
   });
 });
 
 describe('formatHistoryRow', () => {
   it('builds winner/loser strings and per-game winner-first scores, skipping blanks', () => {
-    const [entry] = L.getCompletedMatchesList([monsterDone], null, 'X', 'D');
+    const [entry] = L.getCompletedMatchesList([monsterDone], null, 'X');
     assert.deepEqual(L.formatHistoryRow(entry), {
       winTeamStr: 'Cy & Di',
       loseTeamStr: 'Ann & Bo "B"',
@@ -133,7 +123,7 @@ describe('buildCsv', () => {
   });
 
   it('writes a header plus one quoted row per scored game', () => {
-    const list = L.getCompletedMatchesList([monsterDone], null, 'X', '2026-10-16');
+    const list = L.getCompletedMatchesList([monsterDone], null, 'X');
     list.push({
       uniqueId: 'solo',
       winner: 1,
@@ -149,8 +139,8 @@ describe('buildCsv', () => {
       L.buildCsv(list, '2026-10-16'),
       [
         'Match ID,Date,Game Number,Winning Score,Losing Score,Winning Player 1,Winning Player 2,Losing Player 1,Losing Player 2,Handicap Override',
-        '"X_2026-10-16_MONSTER-11",2026-10-16,1,5,3,"Cy","Di","Ann","Bo ""B""","Yes"',
-        '"X_2026-10-16_MONSTER-11",2026-10-16,3,4,5,"Cy","Di","Ann","Bo ""B""","Yes"',
+        '"X_MONSTER-11",2026-10-16,1,5,3,"Cy","Di","Ann","Bo ""B""","Yes"',
+        '"X_MONSTER-11",2026-10-16,3,4,5,"Cy","Di","Ann","Bo ""B""","Yes"',
         '"solo",2026-10-16,2,5,2,"Ann","","Cy","","No"'
       ].join('\n')
     );
@@ -213,12 +203,5 @@ describe('downloadCsv', () => {
     globalThis.document = fakeDocument();
     L.downloadCsv('x', 'y.csv');
     assert.equal(globalThis.document.log.length, 4);
-  });
-});
-
-describe('todayIsoDate', () => {
-  it('formats as YYYY-MM-DD (UTC)', () => {
-    assert.equal(L.todayIsoDate(new Date('2026-10-16T23:30:00Z')), '2026-10-16');
-    assert.match(L.todayIsoDate(), /^\d{4}-\d{2}-\d{2}$/);
   });
 });

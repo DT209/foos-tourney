@@ -28,7 +28,7 @@ describe('submitPin', () => {
   });
 
   it('no longer ships a default PIN', () => {
-    assert.equal(L.restoreTournamentState(null, '2026-01-01').adminPin, null);
+    assert.equal(L.newTournamentState('id', new Date()).adminPin, null);
     assert.equal('checkPin' in L, false);
   });
 });

@@ -15,6 +15,19 @@ describe('sanitizeInput', () => {
   });
 });
 
+describe('sanitizeTypedText', () => {
+  it('strips angle brackets and truncates but keeps spaces, so typing "Friday Night" works', () => {
+    assert.equal(L.sanitizeTypedText('Friday '), 'Friday ');
+    assert.equal(L.sanitizeTypedText(' <b>Fri</b> Night '), ' bFri/b Night ');
+    assert.equal(L.sanitizeTypedText('x'.repeat(50)).length, 35);
+    assert.equal(L.sanitizeTypedText('abcdef', 3), 'abc');
+  });
+
+  it('returns empty string for non-strings', () => {
+    assert.equal(L.sanitizeTypedText(undefined), '');
+  });
+});
+
 describe('sanitizeInt', () => {
   it('parses integers and clamps negatives to 0', () => {
     assert.equal(L.sanitizeInt('7'), 7);
