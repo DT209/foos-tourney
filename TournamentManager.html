@@ -1,0 +1,3121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calgary Foosball Club - Tournament Manager</title>
+  
+  <!-- SEO & Social Meta Tags -->
+  <meta name="description" content="Official Calgary Foosball Club Tournament Manager for monster draw and bracket playoff management." />
+  <meta name="keywords" content="Calgary Foosball, Foosball Tournament, Table Soccer, Matchmaking, Brackets" />
+  <meta name="author" content="Calgary Foosball Club" />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Calgary Foosball Club - Tournament Manager" />
+  <meta property="og:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets." />
+  <meta property="og:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Calgary Foosball Club - Tournament Manager" />
+  <meta name="twitter:description" content="Manage monster draws, fair matchmaking, leaderboards, and playoff brackets." />
+  <meta property="twitter:image" content="https://calgaryfoosballclub.com/wp-content/uploads/2023/11/calgary-foosball-club-logo.png" />
+
+  <!-- React & Babel CDNs -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cfc: {
+              red: '#d12328',
+              redHover: '#b81c21',
+              dark: '#0e1015',
+              panel: '#181b22',
+              panelLight: '#222731',
+              border: '#2e3543',
+              text: '#f3f4f6'
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-cfc-dark text-cfc-text min-h-screen font-sans selection:bg-cfc-red selection:text-white flex flex-col justify-between">
+  <div id="root" class="w-full min-h-screen flex flex-col justify-between"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ==========================================
+    // SECURITY & SANITIZATION HELPERS
+    // ==========================================
+    
+    function sanitizeInput(input, maxLength = 35) {
+      if (typeof input !== 'string') return '';
+      return input.replace(/[<>]/g, '').trim().substring(0, maxLength);
+    }
+
+    function sanitizeInt(input, fallback = 0) {
+      const parsed = parseInt(input, 10);
+      return isNaN(parsed) ? fallback : Math.max(0, parsed);
+    }
+
+    // ==========================================
+    // CLUB LEADERBOARD
+    // ==========================================
+    // Fallback snapshot, used only if the live fetch below fails (e.g. when
+    // testing this file locally via file://, which can't reach the site).
+    // When hosted at calgaryfoosballclub.com/dyp/, the live fetch is
+    // same-origin as calgaryfoosballclub.com/leaderboard/ and always wins.
+    // Last refreshed from the live page: 2026-08-19.
+    const FALLBACK_LEADERBOARD_PLAYERS = [
+      { name: 'Andrew', singlesElo: null, doublesElo: 1026 },
+      { name: 'Brian L', singlesElo: null, doublesElo: 1255 },
+      { name: 'Castillo', singlesElo: null, doublesElo: 1109 },
+      { name: 'Chris D', singlesElo: null, doublesElo: 906 },
+      { name: 'Darrel', singlesElo: null, doublesElo: 924 },
+      { name: 'David', singlesElo: null, doublesElo: 901 },
+      { name: 'Doogle', singlesElo: null, doublesElo: 913 },
+      { name: 'Emett', singlesElo: null, doublesElo: null },
+      { name: 'Fred', singlesElo: null, doublesElo: 1082 },
+      { name: 'Ivor', singlesElo: null, doublesElo: 1182 },
+      { name: 'J.Herman', singlesElo: null, doublesElo: 1192 },
+      { name: 'Jackie', singlesElo: null, doublesElo: 981 },
+      { name: 'Jay', singlesElo: null, doublesElo: 748 },
+      { name: 'Joe', singlesElo: null, doublesElo: 964 },
+      { name: 'John D', singlesElo: null, doublesElo: null },
+      { name: 'Kai', singlesElo: null, doublesElo: null },
+      { name: 'Kent', singlesElo: null, doublesElo: 1057 },
+      { name: 'Linda', singlesElo: null, doublesElo: 1097 },
+      { name: 'Mark', singlesElo: null, doublesElo: 946 },
+      { name: 'Matt', singlesElo: null, doublesElo: 1216 },
+      { name: 'Mike Leach', singlesElo: null, doublesElo: 994 },
+      { name: 'Mike Locken', singlesElo: null, doublesElo: 1122 },
+      { name: 'Mike Ward', singlesElo: null, doublesElo: null },
+      { name: 'Mo', singlesElo: null, doublesElo: null },
+      { name: 'Patrick', singlesElo: null, doublesElo: 917 },
+      { name: 'Rob', singlesElo: null, doublesElo: null },
+      { name: 'Shane', singlesElo: null, doublesElo: 1059 },
+      { name: 'Shawn', singlesElo: null, doublesElo: 752 },
+      { name: 'Tammy', singlesElo: null, doublesElo: null },
+      { name: 'Tony', singlesElo: null, doublesElo: 1166 },
+      { name: 'Zack', singlesElo: null, doublesElo: 902 }
+    ];
+
+    function findLeaderboardPlayer(list, name) {
+      return list.find(lp => lp.name === name) || null;
+    }
+
+    // The leaderboard page renders its table with client-side JS (a
+    // `playersData` array fed through `renderTable()`), so fetch()'ing the
+    // page's raw HTML always sees an empty <tbody> - fetch never runs that
+    // script. Instead, pull `playersData` straight out of the page's own
+    // inline <script> source (still present as plain text in the raw HTML)
+    // and parse it directly, without executing it.
+    function parsePlayersDataScript(scriptText) {
+      const arrayMatch = scriptText.match(/const\s+playersData\s*=\s*(\[[\s\S]*?\])\s*;/);
+      if (!arrayMatch) return null;
+
+      const objectBlocks = arrayMatch[1].match(/\{[^{}]*\}/g) || [];
+      const parseField = (block, field) => {
+        const m = block.match(new RegExp(field + '\\s*:\\s*("Unranked"|-?\\d+(?:\\.\\d+)?)'));
+        if (!m || m[1] === '"Unranked"') return null;
+        return Math.round(parseFloat(m[1]));
+      };
+
+      const players = [];
+      objectBlocks.forEach(block => {
+        const nameMatch = block.match(/name\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (!nameMatch) return;
+        players.push({
+          name: nameMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
+          singlesElo: parseField(block, 'singlesElo'),
+          doublesElo: parseField(block, 'doublesElo')
+        });
+      });
+      return players;
+    }
+
+    // Fetches and parses the live club leaderboard. Same-origin when this
+    // tool is hosted at calgaryfoosballclub.com/dyp/, so no CORS issues there.
+    async function fetchLeaderboardPlayers() {
+      const res = await fetch('https://calgaryfoosballclub.com/leaderboard/', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Leaderboard request failed: ' + res.status);
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+
+      const dataScript = Array.from(doc.querySelectorAll('script:not([src])'))
+        .find(s => /const\s+playersData\s*=/.test(s.textContent));
+      if (!dataScript) throw new Error('Could not locate playersData on leaderboard page');
+
+      const players = parsePlayersDataScript(dataScript.textContent);
+      if (!players || players.length === 0) throw new Error('Leaderboard playersData was empty or unparsable');
+      return players;
+    }
+
+    // ==========================================
+    // FAIR MATCHMAKING ALGORITHM HELPERS
+    // ==========================================
+
+    function buildHistoryMatrices(matches) {
+      const partnerHistory = {};  
+      const opponentHistory = {}; 
+
+      const recordPair = (matrix, id1, id2) => {
+        const key = id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+        matrix[key] = (matrix[key] || 0) + 1;
+      };
+
+      matches.forEach(m => {
+        if (!m || (m.status !== 'DONE' && m.status !== 'LIVE')) return;
+
+        const t1Ids = (m.team1 || []).map(p => p.id);
+        const t2Ids = (m.team2 || []).map(p => p.id);
+
+        if (t1Ids.length === 2) recordPair(partnerHistory, t1Ids[0], t1Ids[1]);
+        if (t2Ids.length === 2) recordPair(partnerHistory, t2Ids[0], t2Ids[1]);
+
+        t1Ids.forEach(id1 => {
+          t2Ids.forEach(id2 => {
+            recordPair(opponentHistory, id1, id2);
+          });
+        });
+      });
+
+      return { partnerHistory, opponentHistory };
+    }
+
+    function getPairCount(matrix, id1, id2) {
+      const key = id1 < id2 ? `${id1}-${id2}` : `${id2}-${id1}`;
+      return matrix[key] || 0;
+    }
+
+    function drawFairMatch(players, matches, format = '2v2') {
+      if (!Array.isArray(players) || !Array.isArray(matches)) {
+        return { error: 'Invalid input: players and matches must be arrays.' };
+      }
+
+      const busyPlayerIds = new Set();
+      matches.filter(m => m && m.status === 'LIVE').forEach(m => {
+        const activeMatchPlayers = [...(m.team1 || []), ...(m.team2 || [])];
+        activeMatchPlayers.forEach(p => {
+          if (p && p.id !== undefined) busyPlayerIds.add(p.id);
+        });
+      });
+
+      const availablePlayers = players.filter(p => {
+        if (!p || p.id === undefined) return false;
+        const isPlayerActive = p.active !== undefined ? p.active : p.isActive;
+        return Boolean(isPlayerActive) && !busyPlayerIds.has(p.id);
+      });
+
+      const reqPlayers = format === '2v2' ? 4 : 2;
+      if (availablePlayers.length < reqPlayers) {
+        return { 
+          error: `Not enough available players. Found ${availablePlayers.length}, need at least ${reqPlayers}.` 
+        };
+      }
+
+      const { partnerHistory, opponentHistory } = buildHistoryMatrices(matches);
+
+      const W_TEAMMATE = 300;
+      const W_OPPONENT = 100;
+      const W_UNLUCKY  = 80;
+      const MAX_RANDOM_NOISE = 50;
+
+      let pool = [...availablePlayers];
+      let p1 = null;
+      let lowestP1Penalty = Infinity;
+
+      pool.forEach(p => {
+        const unluckinessCredit = (p.eligibleDrawsMissed || 0) * W_UNLUCKY;
+        const randomNoise = Math.floor(Math.random() * MAX_RANDOM_NOISE);
+        const score = -unluckinessCredit + randomNoise;
+
+        if (score < lowestP1Penalty) {
+          lowestP1Penalty = score;
+          p1 = p;
+        }
+      });
+
+      pool = pool.filter(p => p.id !== p1.id);
+
+      if (format === '1v1') {
+        let p2 = null;
+        let lowestP2Penalty = Infinity;
+
+        pool.forEach(candidate => {
+          const oppCount = getPairCount(opponentHistory, p1.id, candidate.id);
+          const oppPenalty = Math.pow(oppCount, 2) * W_OPPONENT;
+          const unluckinessCredit = (candidate.eligibleDrawsMissed || 0) * W_UNLUCKY;
+          const randomNoise = Math.floor(Math.random() * MAX_RANDOM_NOISE);
+
+          const totalPenalty = oppPenalty - unluckinessCredit + randomNoise;
+
+          if (totalPenalty < lowestP2Penalty) {
+            lowestP2Penalty = totalPenalty;
+            p2 = candidate;
+          }
+        });
+
+        const drawnIds = new Set([p1.id, p2.id]);
+        const updatedPlayers = players.map(p => {
+          if (p.active && !busyPlayerIds.has(p.id) && !drawnIds.has(p.id)) {
+            return { ...p, eligibleDrawsMissed: (p.eligibleDrawsMissed || 0) + 1 };
+          }
+          if (drawnIds.has(p.id)) {
+            return { ...p, eligibleDrawsMissed: 0 };
+          }
+          return p;
+        });
+
+        return { team1: [p1], team2: [p2], updatedPlayers };
+      }
+
+      let p2 = null;
+      let lowestP2Penalty = Infinity;
+
+      pool.forEach(candidate => {
+        const partnerCount = getPairCount(partnerHistory, p1.id, candidate.id);
+        const teamPenalty = Math.pow(partnerCount, 2) * W_TEAMMATE;
+        const unluckinessCredit = (candidate.eligibleDrawsMissed || 0) * W_UNLUCKY;
+        const randomNoise = Math.floor(Math.random() * MAX_RANDOM_NOISE);
+
+        const totalPenalty = teamPenalty - unluckinessCredit + randomNoise;
+
+        if (totalPenalty < lowestP2Penalty) {
+          lowestP2Penalty = totalPenalty;
+          p2 = candidate;
+        }
+      });
+
+      pool = pool.filter(p => p.id !== p2.id);
+
+      let p3 = null;
+      let lowestP3Penalty = Infinity;
+
+      pool.forEach(candidate => {
+        const oppCountP1 = getPairCount(opponentHistory, p1.id, candidate.id);
+        const oppCountP2 = getPairCount(opponentHistory, p2.id, candidate.id);
+        const oppPenalty = (Math.pow(oppCountP1, 2) + Math.pow(oppCountP2, 2)) * W_OPPONENT;
+        const unluckinessCredit = (candidate.eligibleDrawsMissed || 0) * W_UNLUCKY;
+        const randomNoise = Math.floor(Math.random() * MAX_RANDOM_NOISE);
+
+        const totalPenalty = oppPenalty - unluckinessCredit + randomNoise;
+
+        if (totalPenalty < lowestP3Penalty) {
+          lowestP3Penalty = totalPenalty;
+          p3 = candidate;
+        }
+      });
+
+      pool = pool.filter(p => p.id !== p3.id);
+
+      let p4 = null;
+      let lowestP4Penalty = Infinity;
+
+      pool.forEach(candidate => {
+        const oppCountP1 = getPairCount(opponentHistory, p1.id, candidate.id);
+        const oppCountP2 = getPairCount(opponentHistory, p2.id, candidate.id);
+        const oppPenalty = (Math.pow(oppCountP1, 2) + Math.pow(oppCountP2, 2)) * W_OPPONENT;
+
+        const partnerCountP3 = getPairCount(partnerHistory, p3.id, candidate.id);
+        const teamPenalty = Math.pow(partnerCountP3, 2) * W_TEAMMATE;
+
+        const unluckinessCredit = (candidate.eligibleDrawsMissed || 0) * W_UNLUCKY;
+        const randomNoise = Math.floor(Math.random() * MAX_RANDOM_NOISE);
+
+        const totalPenalty = teamPenalty + oppPenalty - unluckinessCredit + randomNoise;
+
+        if (totalPenalty < lowestP4Penalty) {
+          lowestP4Penalty = totalPenalty;
+          p4 = candidate;
+        }
+      });
+
+      const drawnIds = new Set([p1.id, p2.id, p3.id, p4.id]);
+
+      const updatedPlayers = players.map(p => {
+        if (p.active && !busyPlayerIds.has(p.id) && !drawnIds.has(p.id)) {
+          return { ...p, eligibleDrawsMissed: (p.eligibleDrawsMissed || 0) + 1 };
+        }
+        if (drawnIds.has(p.id)) {
+          return { ...p, eligibleDrawsMissed: 0 };
+        }
+        return p;
+      });
+
+      return {
+        team1: [p1, p2],
+        team2: [p3, p4],
+        updatedPlayers
+      };
+    }
+
+    // Helper: Standard tournament bracket seed positions generator
+    function getStandardBracketSeedPositions(size) {
+      if (size === 2) return [1, 2];
+      let rounds = Math.log2(size) - 1;
+      let pls = [1, 2];
+      for (let i = 0; i < rounds; i++) {
+        let nextPls = [];
+        for (let j = 0; j < pls.length; j++) {
+          nextPls.push(pls[j]);
+          nextPls.push((pls.length * 2 + 1) - pls[j]);
+        }
+        pls = nextPls;
+      }
+      return pls;
+    }
+
+    // ==========================================
+    // BRACKET GENERATION LOGIC
+    // ==========================================
+
+    function buildBracketTeams(rankedPlayers, teamCount, format, teamFormationStrategy, seedingStrategy, customTeams = [], leaderboardPlayers = []) {
+      const requiredPlayers = format === '2v2' ? teamCount * 2 : teamCount;
+      // "Top X" selection always comes from Monster stage performance, regardless
+      // of seeding strategy - only the seed ORDER within that group changes below.
+      const qualified = rankedPlayers.slice(0, requiredPlayers);
+
+      // Guests / players not on the club leaderboard, or unranked in this format,
+      // default to 1000 ELO.
+      const getPlayerElo = (p) => {
+        const lb = findLeaderboardPlayer(leaderboardPlayers, p.name);
+        const elo = lb ? (format === '1v1' ? lb.singlesElo : lb.doublesElo) : null;
+        return (elo === null || elo === undefined) ? 1000 : elo;
+      };
+
+      const N = qualified.length;
+      const playerSeedMap = new Map();
+      qualified.forEach((p, idx) => {
+        if (seedingStrategy === 'elo') {
+          // Higher ELO = higher seed / BYE priority (opposite direction from
+          // Monster rank, where a lower rank number is the higher seed).
+          playerSeedMap.set(p.id, getPlayerElo(p));
+        } else {
+          const rank = idx + 1;
+          playerSeedMap.set(p.id, Math.pow(2, (N - rank) / 5));
+        }
+      });
+
+      if (format === '1v1') {
+        let teams1v1 = qualified.map((p, idx) => ({
+          id: `team-${idx + 1}`,
+          name: p.name,
+          players: [p],
+          monsterRank: idx + 1,
+          seedValue: playerSeedMap.get(p.id) || 0
+        }));
+
+        if (seedingStrategy === 'ranking' || seedingStrategy === 'elo') {
+          teams1v1.sort((a, b) => b.seedValue - a.seedValue);
+        } else if (seedingStrategy === 'random') {
+          teams1v1.sort(() => Math.random() - 0.5);
+        }
+        return teams1v1;
+      }
+
+      let pairs = [];
+      if (teamFormationStrategy === 'manual') {
+        pairs = customTeams.map(ct => [ct.p1, ct.p2].filter(Boolean));
+      } else if (teamFormationStrategy === 'fair') {
+        for (let i = 0; i < Math.floor(N / 2); i++) {
+          pairs.push([qualified[i], qualified[N - 1 - i]]);
+        }
+      } else if (teamFormationStrategy === 'topBias') {
+        for (let i = 0; i < N; i += 2) {
+          if (qualified[i + 1]) pairs.push([qualified[i], qualified[i + 1]]);
+        }
+      } else if (teamFormationStrategy === 'topBottomRandom') {
+        const topHalf = qualified.slice(0, Math.ceil(N / 2));
+        const bottomHalf = qualified.slice(Math.ceil(N / 2)).sort(() => Math.random() - 0.5);
+        for (let i = 0; i < topHalf.length; i++) {
+          if (bottomHalf[i]) pairs.push([topHalf[i], bottomHalf[i]]);
+        }
+      } else if (teamFormationStrategy === 'random') {
+        const shuffled = [...qualified].sort(() => Math.random() - 0.5);
+        for (let i = 0; i < N; i += 2) {
+          if (shuffled[i + 1]) pairs.push([shuffled[i], shuffled[i + 1]]);
+        }
+      }
+
+      let formedTeams = pairs.map((pair) => {
+        const p1 = pair[0];
+        const p2 = pair[1];
+        const seed1 = p1 ? (playerSeedMap.get(p1.id) || 0) : 0;
+        const seed2 = p2 ? (playerSeedMap.get(p2.id) || 0) : 0;
+
+        // Team ELO = 60% the higher player's ELO + 40% the lower player's ELO.
+        const teamSeedValue = (seedingStrategy === 'elo' && p1 && p2)
+          ? (0.6 * Math.max(seed1, seed2)) + (0.4 * Math.min(seed1, seed2))
+          : seed1 + seed2;
+
+        return {
+          name: pair[1] ? `${pair[0].name} & ${pair[1].name}` : (pair[0] ? pair[0].name : 'TBD Team'),
+          players: pair,
+          seedValue: teamSeedValue
+        };
+      });
+
+      if (seedingStrategy === 'ranking' || seedingStrategy === 'elo') {
+        formedTeams.sort((a, b) => b.seedValue - a.seedValue);
+      } else if (seedingStrategy === 'random') {
+        formedTeams.sort(() => Math.random() - 0.5);
+      }
+
+      return formedTeams.map((t, idx) => ({
+        id: `team-${idx + 1}`,
+        name: t.name,
+        players: t.players,
+        seedValue: t.seedValue
+      }));
+    }
+
+    // Helper to evaluate and advance BYE matches automatically across Losers Bracket rounds
+    function processLoserBracketByes(losersRounds) {
+      if (!losersRounds) return;
+
+      let changed = true;
+      while (changed) {
+        changed = false;
+        losersRounds.forEach((round, rIdx) => {
+          round.forEach((match, mIdx) => {
+            if (match.status === 'DONE') return;
+
+            const t1Bye = match.team1 && match.team1.isBye;
+            const t2Bye = match.team2 && match.team2.isBye;
+
+            // 1. Both slots filled with actual BYEs
+            if (t1Bye && t2Bye) {
+              match.winner = 1;
+              match.status = 'DONE';
+              changed = true;
+              advanceLoserWinner(losersRounds, rIdx, mIdx, match.team1);
+              return;
+            }
+
+            // 2. One real team vs one confirmed BYE
+            if ((match.team1 && !t1Bye && t2Bye) || (match.team2 && !t2Bye && t1Bye)) {
+              const winningTeam = match.team1 && !t1Bye ? match.team1 : match.team2;
+              match.winner = match.team1 && !t1Bye ? 1 : 2;
+              match.status = 'DONE';
+              changed = true;
+              advanceLoserWinner(losersRounds, rIdx, mIdx, winningTeam);
+              return;
+            }
+          });
+        });
+      }
+    }
+
+    function advanceLoserWinner(losersRounds, rIdx, mIdx, winningTeam) {
+      if (rIdx + 1 < losersRounds.length) {
+        const nextRound = losersRounds[rIdx + 1];
+        const isEvenRound = rIdx % 2 === 0;
+        const nextMatchIdx = isEvenRound ? mIdx : Math.floor(mIdx / 2);
+
+        if (isEvenRound) {
+          nextRound[nextMatchIdx].team2 = winningTeam;
+          nextRound[nextMatchIdx].hasPropagatedT2 = true;
+        } else {
+          const isTeam1 = mIdx % 2 === 0;
+          if (isTeam1) {
+            nextRound[nextMatchIdx].team1 = winningTeam;
+            nextRound[nextMatchIdx].hasPropagatedT1 = true;
+          } else {
+            nextRound[nextMatchIdx].team2 = winningTeam;
+            nextRound[nextMatchIdx].hasPropagatedT2 = true;
+          }
+        }
+
+        if (nextRound[nextMatchIdx].team1 && nextRound[nextMatchIdx].team2 && !nextRound[nextMatchIdx].team1.isBye && !nextRound[nextMatchIdx].team2.isBye) {
+          nextRound[nextMatchIdx].status = 'READY';
+        }
+      }
+    }
+
+    function generateBracketStructure(teams, elimType, maxGames) {
+      const numTeams = teams.length;
+      const bracketSize = Math.pow(2, Math.ceil(Math.log2(numTeams)));
+      const numRounds = Math.log2(bracketSize);
+
+      const seedPositions = getStandardBracketSeedPositions(bracketSize);
+
+      let seededSlots = Array.from({ length: bracketSize }, () => null);
+      seedPositions.forEach((seedNum, slotIdx) => {
+        if (seedNum <= teams.length) {
+          seededSlots[slotIdx] = teams[seedNum - 1];
+        } else {
+          seededSlots[slotIdx] = { id: `bye-${slotIdx}`, name: 'BYE', isBye: true };
+        }
+      });
+
+      let matchIdCounter = 1;
+      const createMatchSlot = (round, position, bracketType = 'winners', label = '') => ({
+        id: `m-${bracketType}-${round}-${position}`,
+        num: matchIdCounter++,
+        round,
+        position,
+        bracketType,
+        label: label || `Match ${matchIdCounter - 1}`,
+        team1: null,
+        team2: null,
+        games: Array.from({ length: maxGames }, () => ({ t1: '', t2: '' })),
+        winner: null,
+        status: 'PENDING',
+        isHandicap: false,
+        overrideWinner: null,
+        hasPropagatedT1: false,
+        hasPropagatedT2: false,
+        table: null
+      });
+
+      const winnersRounds = [];
+      const numWinnersRounds = elimType === 'single' ? numRounds - 1 : numRounds;
+      for (let r = 1; r <= numWinnersRounds; r++) {
+        const matchesInRound = bracketSize / Math.pow(2, r);
+        const roundMatches = [];
+        // In Championship Format, the last Winners Bracket round IS the Grand Finals -
+        // there's no separate merge match against the Losers Bracket champion.
+        const isChampionshipFinal = elimType === 'championship' && r === numWinnersRounds;
+        for (let p = 0; p < matchesInRound; p++) {
+          roundMatches.push(createMatchSlot(r, p, 'winners', isChampionshipFinal ? 'Grand Finals' : ''));
+        }
+        winnersRounds.push(roundMatches);
+      }
+
+      let losersRounds = null;
+      let grandFinals = null;
+      let thirdPlaceMatch = null;
+
+      if (elimType === 'single') {
+        grandFinals = [
+          createMatchSlot(numRounds, 0, 'grandFinal', 'Grand Finals')
+        ];
+        if (numRounds >= 2) {
+          thirdPlaceMatch = createMatchSlot(numRounds, 1, 'thirdPlace', '3rd / 4th Place Match');
+        }
+      } else if (elimType === 'double' || elimType === 'championship') {
+        losersRounds = [];
+        // Championship Format's Losers Bracket has one fewer round than Double Elimination's:
+        // the Winners Bracket runner-up never drops down to face the Losers Bracket champion,
+        // so the Losers Bracket's own final round IS the 3rd Place Match.
+        const numLoserRounds = elimType === 'championship'
+          ? Math.max(0, (numRounds - 1) * 2 - 1)
+          : (numRounds - 1) * 2;
+        let currentMatchesCount = bracketSize / 4;
+
+        for (let lr = 1; lr <= numLoserRounds; lr++) {
+          const roundMatches = [];
+          const isThirdPlaceRound = elimType === 'championship' && lr === numLoserRounds;
+          for (let p = 0; p < currentMatchesCount; p++) {
+            roundMatches.push(createMatchSlot(lr, p, 'losers', isThirdPlaceRound ? '3rd Place Match' : ''));
+          }
+          losersRounds.push(roundMatches);
+          if (lr % 2 === 0) {
+            currentMatchesCount /= 2;
+          }
+        }
+
+        if (elimType === 'double') {
+          grandFinals = [
+            createMatchSlot(1, 0, 'grandFinal', 'Grand Finals (Match 1)')
+          ];
+        }
+      }
+
+      // Populate Winners Round 1 & resolve BYEs
+      const round1 = winnersRounds[0];
+      for (let i = 0; i < round1.length; i++) {
+        const t1 = seededSlots[i * 2] || null;
+        const t2 = seededSlots[i * 2 + 1] || null;
+
+        round1[i].team1 = t1;
+        round1[i].team2 = t2;
+
+        const isT1Bye = t1 && t1.isBye;
+        const isT2Bye = t2 && t2.isBye;
+
+        if (t1 && isT2Bye) {
+          round1[i].winner = 1;
+          round1[i].status = 'DONE';
+        } else if (isT1Bye && t2) {
+          round1[i].winner = 2;
+          round1[i].status = 'DONE';
+        } else if (isT1Bye && isT2Bye) {
+          round1[i].winner = 1;
+          round1[i].status = 'DONE';
+        } else if (t1 && t2) {
+          round1[i].status = 'READY';
+        } else {
+          round1[i].status = 'DONE';
+        }
+
+        // Propagate BYE losers into Losers Bracket
+        // (Championship: skip if Round 1 is also the final Winners round - that loser doesn't drop down)
+        const isChampionshipFinalRound1 = elimType === 'championship' && winnersRounds.length === 1;
+        if ((elimType === 'double' || elimType === 'championship') && losersRounds && losersRounds.length > 0 && !isChampionshipFinalRound1) {
+          const losingTeam = round1[i].status === 'DONE' ? (round1[i].winner === 1 ? round1[i].team2 : round1[i].team1) : null;
+          const targetLoserMatchIdx = Math.floor(i / 2);
+          const targetMatch = losersRounds[0][targetLoserMatchIdx];
+
+          if (i % 2 === 0) {
+            targetMatch.team1 = losingTeam;
+            targetMatch.hasPropagatedT1 = true;
+          } else {
+            targetMatch.team2 = losingTeam;
+            targetMatch.hasPropagatedT2 = true;
+          }
+        }
+      }
+
+      // Advance Round 1 Winners to Round 2 (or Grand Finals if 2-team single elim)
+      if (winnersRounds.length > 1) {
+        const round2 = winnersRounds[1];
+        round1.forEach((m, mIdx) => {
+          if (m.status === 'DONE' && m.winner) {
+            const winningTeam = m.winner === 1 ? m.team1 : m.team2;
+            const nextMatchIdx = Math.floor(mIdx / 2);
+            const isTeam1 = mIdx % 2 === 0;
+
+            if (isTeam1) round2[nextMatchIdx].team1 = winningTeam;
+            else round2[nextMatchIdx].team2 = winningTeam;
+
+            if (round2[nextMatchIdx].team1 && round2[nextMatchIdx].team2) {
+              const t1Bye = round2[nextMatchIdx].team1.isBye;
+              const t2Bye = round2[nextMatchIdx].team2.isBye;
+              if (!t1Bye && !t2Bye) {
+                round2[nextMatchIdx].status = 'READY';
+              }
+            }
+          }
+        });
+      } else if (elimType === 'single' && grandFinals) {
+        round1.forEach((m, mIdx) => {
+          if (m.status === 'DONE' && m.winner) {
+            const winningTeam = m.winner === 1 ? m.team1 : m.team2;
+            const isTeam1 = mIdx % 2 === 0;
+            if (isTeam1) grandFinals[0].team1 = winningTeam;
+            else grandFinals[0].team2 = winningTeam;
+
+            if (grandFinals[0].team1 && grandFinals[0].team2) {
+              const t1Bye = grandFinals[0].team1.isBye;
+              const t2Bye = grandFinals[0].team2.isBye;
+              if (!t1Bye && !t2Bye) {
+                grandFinals[0].status = 'READY';
+              }
+            }
+          }
+        });
+      }
+
+      // Process and advance BYEs in the Losers Bracket
+      if ((elimType === 'double' || elimType === 'championship') && losersRounds) {
+        processLoserBracketByes(losersRounds);
+      }
+
+      return {
+        type: elimType,
+        maxGames,
+        winnersRounds,
+        losersRounds,
+        grandFinals,
+        thirdPlaceMatch,
+        isCompleted: false,
+        // Kept so "Clear Matches" can rebuild an identical, fresh Round 1
+        // (same teams/seeding/byes) without needing a full re-draw.
+        originalTeams: teams
+      };
+    }
+
+    // Helper function to calculate final bracket standings
+    function calculateBracketStandings(bracketData) {
+      if (!bracketData) return [];
+
+      let standings = [];
+
+      if (bracketData.type === 'single') {
+        const gfMatches = bracketData.grandFinals;
+        const finalMatch = gfMatches ? gfMatches[0] : null;
+        if (finalMatch && finalMatch.winner) {
+          const first = finalMatch.winner === 1 ? finalMatch.team1 : finalMatch.team2;
+          const second = finalMatch.winner === 1 ? finalMatch.team2 : finalMatch.team1;
+          if (first) standings.push({ place: 1, team: first });
+          if (second) standings.push({ place: 2, team: second });
+
+          if (bracketData.thirdPlaceMatch && bracketData.thirdPlaceMatch.winner) {
+            const third = bracketData.thirdPlaceMatch.winner === 1 ? bracketData.thirdPlaceMatch.team1 : bracketData.thirdPlaceMatch.team2;
+            const fourth = bracketData.thirdPlaceMatch.winner === 1 ? bracketData.thirdPlaceMatch.team2 : bracketData.thirdPlaceMatch.team1;
+            if (third) standings.push({ place: 3, team: third });
+            if (fourth) standings.push({ place: 4, team: fourth });
+          } else if (bracketData.winnersRounds && bracketData.winnersRounds.length > 0) {
+            const sfRound = bracketData.winnersRounds[bracketData.winnersRounds.length - 1];
+            sfRound.forEach(m => {
+              if (m.winner) {
+                const loser = m.winner === 1 ? m.team2 : m.team1;
+                if (loser) standings.push({ place: 3, team: loser });
+              }
+            });
+          }
+        }
+      } else if (bracketData.type === 'championship') {
+        // Championship Format: the last Winners Bracket round IS the Grand Finals -
+        // 1st/2nd come directly from it. The Winners Bracket runner-up never drops to
+        // the Losers Bracket, so the Losers Bracket final is the 3rd Place Match outright.
+        const wRounds = bracketData.winnersRounds;
+        const winnersFinal = wRounds && wRounds.length > 0 ? wRounds[wRounds.length - 1][0] : null;
+        if (winnersFinal && winnersFinal.winner) {
+          const first = winnersFinal.winner === 1 ? winnersFinal.team1 : winnersFinal.team2;
+          const second = winnersFinal.winner === 1 ? winnersFinal.team2 : winnersFinal.team1;
+          if (first) standings.push({ place: 1, team: first });
+          if (second) standings.push({ place: 2, team: second });
+        }
+
+        if (bracketData.losersRounds && bracketData.losersRounds.length > 0) {
+          const lastLoserRound = bracketData.losersRounds[bracketData.losersRounds.length - 1];
+          const finalLoserMatch = lastLoserRound[0];
+          if (finalLoserMatch && finalLoserMatch.winner) {
+            const third = finalLoserMatch.winner === 1 ? finalLoserMatch.team1 : finalLoserMatch.team2;
+            if (third) standings.push({ place: 3, team: third });
+          }
+        }
+      } else {
+        const gfMatches = bracketData.grandFinals;
+        const lastGf = gfMatches[gfMatches.length - 1];
+        if (lastGf && lastGf.winner) {
+          const first = lastGf.winner === 1 ? lastGf.team1 : lastGf.team2;
+          const second = lastGf.winner === 1 ? lastGf.team2 : lastGf.team1;
+          if (first) standings.push({ place: 1, team: first });
+          if (second) standings.push({ place: 2, team: second });
+
+          if (bracketData.losersRounds && bracketData.losersRounds.length > 0) {
+            const lastLoserRound = bracketData.losersRounds[bracketData.losersRounds.length - 1];
+            if (lastLoserRound[0] && lastLoserRound[0].winner) {
+              const third = lastLoserRound[0].winner === 1 ? lastLoserRound[0].team2 : lastLoserRound[0].team1;
+              if (third) standings.push({ place: 3, team: third });
+            }
+          }
+        }
+      }
+
+      return standings;
+    }
+
+    // ==========================================
+    // REUSABLE MATCH CARD COMPONENT FOR BRACKET
+    // ==========================================
+
+    function MatchCard({ match, onScoreChange, onHandicapToggle, onOverrideWinnerChange, onConfirm, locked }) {
+      if (!match) return null;
+
+      const t1Name = match.team1 ? match.team1.name : 'TBD';
+      const t2Name = match.team2 ? match.team2.name : 'TBD';
+
+      let winsNeeded = Math.ceil(match.games.length / 2);
+      let t1Wins = 0;
+      let t2Wins = 0;
+
+      match.games.forEach(g => {
+        const s1 = parseInt(g.t1, 10);
+        const s2 = parseInt(g.t2, 10);
+        if (!isNaN(s1) && !isNaN(s2) && s1 !== s2) {
+          if (s1 > s2) t1Wins++;
+          else t2Wins++;
+        }
+      });
+
+      const calculatedWinner = match.isHandicap && match.overrideWinner 
+        ? match.overrideWinner 
+        : (t1Wins >= winsNeeded ? 1 : (t2Wins >= winsNeeded ? 2 : null));
+
+      // Dynamic Border Color Logic based on Match State
+      let borderColor = 'border-cfc-border';
+      if (match.status === 'DONE') {
+        borderColor = 'border-emerald-500';
+      } else if (match.table) {
+        borderColor = 'border-purple-600';
+      } else if (match.status === 'READY') {
+        borderColor = 'border-rose-600';
+      }
+
+      return (
+        <div className={`bg-cfc-dark p-3.5 rounded-lg border-2 ${borderColor} space-y-3 shadow-md relative`}>
+          <div className="flex justify-between items-center text-xs border-b border-cfc-border/60 pb-1.5">
+            <span className="font-bold text-gray-300">{match.label || `Match ${match.num}`}</span>
+            {match.status === 'DONE' ? (
+              <span className="bg-emerald-950/80 text-emerald-400 border border-emerald-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                ✓ Complete
+              </span>
+            ) : match.table && (
+              <span className="bg-purple-950/80 text-purple-300 border border-purple-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
+                Table #{match.table}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-1.5 text-xs">
+            <div className={`p-2 rounded flex justify-between items-center ${match.winner === 1 ? 'bg-emerald-950/60 border border-emerald-700/80 font-bold text-white' : 'bg-cfc-panel border border-cfc-border text-gray-300'}`}>
+              <span className="truncate pr-2">{t1Name}</span>
+              {match.winner === 1 && <span className="text-emerald-400 text-xs">✓ Winner</span>}
+            </div>
+
+            <div className={`p-2 rounded flex justify-between items-center ${match.winner === 2 ? 'bg-emerald-950/60 border border-emerald-700/80 font-bold text-white' : 'bg-cfc-panel border border-cfc-border text-gray-300'}`}>
+              <span className="truncate pr-2">{t2Name}</span>
+              {match.winner === 2 && <span className="text-emerald-400 text-xs">✓ Winner</span>}
+            </div>
+          </div>
+
+          {match.status !== 'DONE' && (
+            <div className="space-y-2 pt-1 border-t border-cfc-border/60">
+              <div className="space-y-1.5">
+                {match.games.map((g, gIdx) => (
+                  <div key={gIdx} className="flex items-center justify-between text-xs gap-2">
+                    <span className="text-gray-400 font-mono text-[11px]">Game #{gIdx + 1}:</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number" min="0" max="99"
+                        value={g.t1}
+                        onChange={e => onScoreChange(gIdx, 't1', e.target.value)}
+                        disabled={locked}
+                        className="w-12 bg-cfc-panel border border-cfc-border text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                      />
+                      <span className="text-gray-500 font-bold">-</span>
+                      <input
+                        type="number" min="0" max="99"
+                        value={g.t2}
+                        onChange={e => onScoreChange(gIdx, 't2', e.target.value)}
+                        disabled={locked}
+                        className="w-12 bg-cfc-panel border border-cfc-border text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between text-[11px] pt-1">
+                <label className="flex items-center gap-1.5 cursor-pointer text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={match.isHandicap || false}
+                    onChange={e => onHandicapToggle(e.target.checked)}
+                    disabled={locked}
+                    className="rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0 disabled:opacity-50"
+                  />
+                  Handicap / Override
+                </label>
+
+                {match.isHandicap && (
+                  <select
+                    value={match.overrideWinner || 1}
+                    onChange={e => onOverrideWinnerChange(e.target.value)}
+                    disabled={locked}
+                    className="bg-cfc-panel border border-cfc-border rounded px-1.5 py-0.5 text-cfc-red font-semibold text-[11px] disabled:opacity-50"
+                  >
+                    <option value="1">Team 1 Wins</option>
+                    <option value="2">Team 2 Wins</option>
+                  </select>
+                )}
+              </div>
+
+              <button
+                onClick={onConfirm}
+                disabled={!calculatedWinner || locked}
+                className={`w-full py-1.5 rounded font-bold text-xs uppercase tracking-wider transition ${
+                  calculatedWinner && !locked
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                    : 'bg-cfc-panel border border-cfc-border text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                {calculatedWinner ? `Confirm (Winner: Team ${calculatedWinner})` : 'Enter Winner Scores'}
+              </button>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ==========================================
+    // MAIN REACT APPLICATION
+    // ==========================================
+
+    function FoosballApp() {
+      // Configuration State
+      const [tournamentName, setTournamentName] = useState('Thursday DYP');
+      const [startDate] = useState(() => new Date().toISOString().split('T')[0]); 
+      const [tableCount, setTableCount] = useState(2);
+      const [format, setFormat] = useState('2v2');
+      const [maxGames, setMaxGames] = useState(3);
+      const [activeTab, setActiveTab] = useState('pool');
+      const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+      const [showClearMatchesWarning, setShowClearMatchesWarning] = useState(false);
+      const [showFullResetWarning, setShowFullResetWarning] = useState(false);
+      
+      // Admin Lock State - tool is fully unlocked (editable) by default.
+      // Entering the correct PIN toggles between full access and View Only mode.
+      const [adminPin] = useState('1234');
+      const [isLocked, setIsLocked] = useState(false);
+      const [pinInput, setPinInput] = useState('');
+      const [showPinModal, setShowPinModal] = useState(false);
+
+      // Player State
+      const [players, setPlayers] = useState([]);
+      const [newPlayerName, setNewPlayerName] = useState('');
+      const [editingPlayerId, setEditingPlayerId] = useState(null);
+      const [editingName, setEditingName] = useState('');
+      const [pendingCustomPlayerName, setPendingCustomPlayerName] = useState(null);
+      const [showLeaderboardPicker, setShowLeaderboardPicker] = useState(false);
+      const [pickerSelection, setPickerSelection] = useState([]);
+      const [showPlayerSuggestions, setShowPlayerSuggestions] = useState(false);
+      const [openActionMenuId, setOpenActionMenuId] = useState(null);
+
+      // Club Leaderboard - starts from the bundled fallback snapshot, then
+      // upgraded to a live pull once the fetch below resolves.
+      const [leaderboardPlayers, setLeaderboardPlayers] = useState(FALLBACK_LEADERBOARD_PLAYERS);
+      const [leaderboardStatus, setLeaderboardStatus] = useState('cached');
+
+      useEffect(() => {
+        let cancelled = false;
+        fetchLeaderboardPlayers()
+          .then(players => {
+            if (cancelled) return;
+            setLeaderboardPlayers(players);
+            setLeaderboardStatus('live');
+          })
+          .catch(() => {
+            if (!cancelled) setLeaderboardStatus('cached');
+          });
+        return () => { cancelled = true; };
+      }, []);
+
+      // Matches & Bracket State
+      const [matches, setMatches] = useState([]);
+      const [showBracketModal, setShowBracketModal] = useState(false);
+      const [bracketTeamCount, setBracketTeamCount] = useState(4);
+      const [bracketElimType, setBracketElimType] = useState('single');
+      const [bracketMaxGames, setBracketMaxGames] = useState(3);
+      const [teamFormationStrategy, setTeamFormationStrategy] = useState('fair');
+      const [seedingStrategy, setSeedingStrategy] = useState('ranking');
+      const [bracketData, setBracketData] = useState(null);
+      const [customTeams, setCustomTeams] = useState([]);
+      const [showWinnerModal, setShowWinnerModal] = useState(false);
+      const [showPausedWarningModal, setShowPausedWarningModal] = useState(false);
+
+      // --- ADMIN LOCK / VIEW ONLY TOGGLE ---
+      const handlePinSubmit = (e) => {
+        e.preventDefault();
+        if (pinInput === adminPin) {
+          setIsLocked(prev => !prev);
+          setShowPinModal(false);
+          setPinInput('');
+        } else {
+          alert('Incorrect PIN!');
+          setPinInput('');
+        }
+      };
+
+      // --- PLAYER ACTIONS ---
+      const addPlayerToRoster = (cleanName) => {
+        setPlayers(prev => [
+          ...prev,
+          {
+            id: Date.now(),
+            name: cleanName,
+            paid: false,
+            active: true,
+            wins: 0,
+            losses: 0,
+            gf: 0,
+            ga: 0,
+            eligibleDrawsMissed: 0
+          }
+        ]);
+        setNewPlayerName('');
+      };
+
+      const handleAddPlayer = (e) => {
+        e.preventDefault();
+        const cleanName = sanitizeInput(newPlayerName, 25);
+        if (!cleanName) {
+          alert("Please enter a valid player name.");
+          return;
+        }
+
+        const isDuplicate = players.some(
+          (p) => p.name.trim().toLowerCase() === cleanName.toLowerCase()
+        );
+
+        if (isDuplicate) {
+          alert(`A player named "${cleanName}" already exists in the roster.`);
+          return;
+        }
+
+        if (findLeaderboardPlayer(leaderboardPlayers, cleanName)) {
+          addPlayerToRoster(cleanName);
+        } else {
+          // Not an exact match on the club leaderboard - confirm before adding as a guest/custom player.
+          setPendingCustomPlayerName(cleanName);
+        }
+      };
+
+      const confirmAddCustomPlayer = () => {
+        if (pendingCustomPlayerName) {
+          addPlayerToRoster(pendingCustomPlayerName);
+        }
+        setPendingCustomPlayerName(null);
+      };
+
+      // --- BULK ADD FROM CLUB LEADERBOARD ---
+      const openLeaderboardPicker = () => {
+        setPickerSelection([]);
+        setShowLeaderboardPicker(true);
+      };
+
+      const togglePickerName = (name) => {
+        setPickerSelection(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
+      };
+
+      const addPickedPlayers = () => {
+        if (pickerSelection.length === 0) return;
+        const baseId = Date.now();
+        setPlayers(prev => {
+          const existing = new Set(prev.map(p => p.name.trim().toLowerCase()));
+          const additions = pickerSelection
+            .filter(name => !existing.has(name.trim().toLowerCase()))
+            .map((name, i) => ({
+              id: baseId + i, // unique per player - a shared Date.now() would collide
+              name,
+              paid: false,
+              active: true,
+              wins: 0,
+              losses: 0,
+              gf: 0,
+              ga: 0,
+              eligibleDrawsMissed: 0
+            }));
+          return [...prev, ...additions];
+        });
+        setShowLeaderboardPicker(false);
+        setPickerSelection([]);
+      };
+
+      const togglePaid = (id) => {
+        setPlayers(players.map(p => p.id === id ? { ...p, paid: !p.paid } : p));
+      };
+
+      const toggleActive = (id) => {
+        setPlayers(players.map(p => p.id === id ? { ...p, active: !p.active } : p));
+      };
+
+      const startEditingPlayer = (player) => {
+        setEditingPlayerId(player.id);
+        setEditingName(player.name);
+      };
+
+      const savePlayerName = (id) => {
+        const cleanName = sanitizeInput(editingName, 25);
+        if (!cleanName) {
+           setEditingPlayerId(null);
+           return;
+        }
+        setPlayers(players.map(p => p.id === id ? { ...p, name: cleanName } : p));
+        setEditingPlayerId(null);
+      };
+
+      const removePlayer = (id) => {
+        if (confirm('Are you sure you want to remove this player? Historical match records will be preserved.')) {
+          setPlayers(players.filter(p => p.id !== id));
+        }
+      };
+
+      // --- TOURNAMENT RESET ACTIONS ---
+      const resetMatchesOnly = () => {
+        setMatches([]);
+        // If a bracket exists, rebuild it from the same teams/seeding so Round 1
+        // (structure + team assignments) is preserved - only results are cleared.
+        if (bracketData) {
+          setBracketData(generateBracketStructure(bracketData.originalTeams, bracketData.type, bracketData.maxGames));
+        }
+        setPlayers(players.map(p => ({ ...p, wins: 0, losses: 0, gf: 0, ga: 0, eligibleDrawsMissed: 0 })));
+        setShowClearMatchesWarning(false);
+      };
+
+      const fullReset = () => {
+        setMatches([]);
+        setBracketData(null);
+        setPlayers([]);
+        setShowFullResetWarning(false);
+      };
+
+      // Helper to generate normalized match data
+      const getCompletedMatchesList = () => {
+        const cleanTournamentName = (tournamentName.trim() || 'Tournament').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const prefix = `${cleanTournamentName}_${startDate}`;
+        const allCompletedMatches = [];
+
+        matches.filter(m => m.status === 'DONE').forEach(m => {
+          allCompletedMatches.push({
+            uniqueId: `${prefix}_MONSTER-${m.id}`,
+            stage: 'Monster',
+            winner: m.winner,
+            team1: m.team1 || [],
+            team2: m.team2 || [],
+            games: m.games || [],
+            isHandicap: m.isHandicap ? 'Yes' : 'No'
+          });
+        });
+
+        if (bracketData) {
+          const gatherBracketMatches = (rounds) => {
+            if (!rounds) return;
+            rounds.forEach(round => {
+              round.forEach(m => {
+                if (m.status === 'DONE' && m.winner) {
+                  const t1Players = m.team1 ? (Array.isArray(m.team1.players) ? m.team1.players : [m.team1]) : [];
+                  const t2Players = m.team2 ? (Array.isArray(m.team2.players) ? m.team2.players : [m.team2]) : [];
+
+                  allCompletedMatches.push({
+                    uniqueId: `${prefix}_BRACKET-${m.id}`,
+                    stage: 'Playoffs',
+                    winner: m.winner,
+                    team1: t1Players,
+                    team2: t2Players,
+                    games: m.games || [],
+                    isHandicap: m.isHandicap ? 'Yes' : 'No'
+                  });
+                }
+              });
+            });
+          };
+
+          gatherBracketMatches(bracketData.winnersRounds);
+          gatherBracketMatches(bracketData.losersRounds);
+          if (bracketData.grandFinals) gatherBracketMatches([bracketData.grandFinals]);
+          if (bracketData.thirdPlaceMatch && bracketData.thirdPlaceMatch.status === 'DONE' && bracketData.thirdPlaceMatch.winner) {
+            gatherBracketMatches([[bracketData.thirdPlaceMatch]]);
+          }
+        }
+
+        return allCompletedMatches;
+      };
+
+      // --- EXPORT TO EXCEL (CSV) ---
+      const exportToCSV = () => {
+        const allCompletedMatches = getCompletedMatchesList();
+
+        if (allCompletedMatches.length === 0) {
+          alert("No completed match data available to export yet.");
+          return;
+        }
+
+        const rows = [];
+        const headers = [
+          "Match ID",
+          "Date",
+          "Game Number",
+          "Winning Score",
+          "Losing Score",
+          "Winning Player 1",
+          "Winning Player 2",
+          "Losing Player 1",
+          "Losing Player 2",
+          "Handicap Override"
+        ];
+        rows.push(headers.join(","));
+
+        allCompletedMatches.forEach(m => {
+          const winTeam = m.winner === 1 ? m.team1 : m.team2;
+          const loseTeam = m.winner === 1 ? m.team2 : m.team1;
+
+          const winP1 = winTeam[0] ? winTeam[0].name : '';
+          const winP2 = winTeam[1] ? winTeam[1].name : '';
+          const loseP1 = loseTeam[0] ? loseTeam[0].name : '';
+          const loseP2 = loseTeam[1] ? loseTeam[1].name : '';
+
+          m.games.forEach((game, gIdx) => {
+            const s1 = parseInt(game.t1, 10);
+            const s2 = parseInt(game.t2, 10);
+
+            if (isNaN(s1) || isNaN(s2)) return;
+
+            const winScore = m.winner === 1 ? s1 : s2;
+            const loseScore = m.winner === 1 ? s2 : s1;
+
+            const row = [
+              `"${m.uniqueId}"`,
+              startDate,
+              gIdx + 1,
+              winScore,
+              loseScore,
+              `"${winP1.replace(/"/g, '""')}"`,
+              `"${winP2.replace(/"/g, '""')}"`,
+              `"${loseP1.replace(/"/g, '""')}"`,
+              `"${loseP2.replace(/"/g, '""')}"`,
+              `"${m.isHandicap}"`
+            ];
+            rows.push(row.join(","));
+          });
+        });
+
+        const csvContent = "data:text/csv;charset=utf-8," + rows.join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${(tournamentName.trim() || 'tournament').replace(/[^a-zA-Z0-9_-]/g, '_')}_${startDate}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      };
+
+      // --- MATCH DRAWING & DELETION ---
+      const handleDrawMatch = () => {
+        const activeTableNums = matches.filter(m => m.status === 'LIVE').map(m => m.table);
+        let freeTable = null;
+        for (let i = 1; i <= tableCount; i++) {
+          if (!activeTableNums.includes(i)) {
+            freeTable = i;
+            break;
+          }
+        }
+
+        if (!freeTable) {
+          alert('All tables are currently occupied!');
+          return;
+        }
+
+        const result = drawFairMatch(players, matches, format);
+
+        if (result.error) {
+          alert(result.error);
+          return;
+        }
+
+        setPlayers(result.updatedPlayers);
+
+        const gameSlots = Array.from({ length: maxGames }, () => ({ t1: '', t2: '' }));
+
+        const newMatch = {
+          id: Date.now(),
+          table: freeTable,
+          type: format,
+          team1: result.team1,
+          team2: result.team2,
+          games: gameSlots,
+          overrideWinner: null,
+          isHandicap: false,
+          status: 'LIVE'
+        };
+
+        setMatches([...matches, newMatch]);
+      };
+
+      const handleDeleteMatch = (matchId) => {
+        if (confirm('Are you sure you want to delete this match? Table will be freed.')) {
+          setMatches(matches.filter(m => m.id !== matchId));
+        }
+      };
+
+      // --- SCORE ENTRY & MATCH COMPLETION ---
+      const handleGameScoreChange = (matchId, gameIndex, teamKey, value) => {
+        setMatches(matches.map(m => {
+          if (m.id !== matchId) return m;
+          const updatedGames = [...m.games];
+          updatedGames[gameIndex] = {
+            ...updatedGames[gameIndex],
+            [teamKey]: value === '' ? '' : sanitizeInt(value)
+          };
+          return { ...m, games: updatedGames };
+        }));
+      };
+
+      const handleHandicapToggle = (matchId, checked) => {
+        setMatches(matches.map(m => {
+          if (m.id !== matchId) return m;
+          return { ...m, isHandicap: checked, overrideWinner: checked ? 1 : null };
+        }));
+      };
+
+      const handleOverrideWinnerChange = (matchId, winner) => {
+        setMatches(matches.map(m => {
+          if (m.id !== matchId) return m;
+          return { ...m, overrideWinner: Number(winner) };
+        }));
+      };
+
+      const getMatchWinner = (match) => {
+        if (match.isHandicap && match.overrideWinner) {
+          return match.overrideWinner;
+        }
+
+        let t1Wins = 0;
+        let t2Wins = 0;
+        const winsNeeded = Math.ceil(match.games.length / 2);
+
+        for (const g of match.games) {
+          const s1 = parseInt(g.t1, 10);
+          const s2 = parseInt(g.t2, 10);
+          if (!isNaN(s1) && !isNaN(s2) && s1 !== s2) {
+            if (s1 > s2) t1Wins++;
+            else t2Wins++;
+          }
+        }
+
+        if (t1Wins >= winsNeeded) return 1;
+        if (t2Wins >= winsNeeded) return 2;
+        return null;
+      };
+
+      const completeMatch = (matchId) => {
+        const match = matches.find(m => m.id === matchId);
+        if (!match) return;
+
+        const winner = getMatchWinner(match);
+        if (!winner) {
+          alert('Cannot complete match: No team has secured enough game wins.');
+          return;
+        }
+
+        let t1TotalGoals = 0;
+        let t2TotalGoals = 0;
+        match.games.forEach(g => {
+          t1TotalGoals += (parseInt(g.t1, 10) || 0);
+          t2TotalGoals += (parseInt(g.t2, 10) || 0);
+        });
+
+        setPlayers(prevPlayers => prevPlayers.map(p => {
+          const inTeam1 = match.team1.some(tp => tp.id === p.id);
+          const inTeam2 = match.team2.some(tp => tp.id === p.id);
+
+          if (!inTeam1 && !inTeam2) return p;
+
+          const isUserWinner = (inTeam1 && winner === 1) || (inTeam2 && winner === 2);
+
+          return {
+            ...p,
+            wins: p.wins + (isUserWinner ? 1 : 0),
+            losses: p.losses + (isUserWinner ? 0 : 1),
+            gf: p.gf + (inTeam1 ? t1TotalGoals : t2TotalGoals),
+            ga: p.ga + (inTeam1 ? t2TotalGoals : t1TotalGoals),
+          };
+        }));
+
+        setMatches(matches.map(m => m.id === matchId ? { ...m, status: 'DONE', winner } : m));
+      };
+
+      const sortedPlayers = [...players].map(p => {
+        const totalGames = p.wins + p.losses;
+        const winPct = totalGames > 0 ? ((p.wins / totalGames) * 100).toFixed(1) : "0.0";
+        const diff = p.gf - p.ga;
+        const avgDiff = totalGames > 0 ? (diff / totalGames).toFixed(1) : "0.0";
+        return { ...p, totalGames, winPct, diff, avgDiff };
+      }).sort((a, b) => parseFloat(b.winPct) - parseFloat(a.winPct) || parseFloat(b.avgDiff) - parseFloat(a.avgDiff));
+
+      const initManualTeams = (teamCount, currentFormat) => {
+        const count = parseInt(teamCount, 10) || 2;
+        const reqPlayers = currentFormat === '2v2' ? count * 2 : count;
+        const qualified = sortedPlayers.slice(0, reqPlayers);
+        const teams = [];
+
+        for (let i = 0; i < count; i++) {
+          if (currentFormat === '2v2') {
+            teams.push({
+              p1: qualified[i * 2] || null,
+              p2: qualified[i * 2 + 1] || null
+            });
+          } else {
+            teams.push({
+              p1: qualified[i] || null,
+              p2: null
+            });
+          }
+        }
+        setCustomTeams(teams);
+      };
+
+      const openBracketModal = () => {
+        initManualTeams(bracketTeamCount, format);
+        setShowBracketModal(true);
+      };
+
+      const handleDrawBracketsClick = () => {
+        const hasPausedPlayers = players.some(p => !p.active);
+        if (hasPausedPlayers) {
+          setShowPausedWarningModal(true);
+        } else {
+          openBracketModal();
+        }
+      };
+
+      const handleGenerateBracket = () => {
+        const parsedTeamCount = parseInt(bracketTeamCount, 10);
+        if (isNaN(parsedTeamCount) || parsedTeamCount < 2) {
+          alert("Please enter a valid number of teams (minimum 2).");
+          return;
+        }
+
+        const requiredPlayers = format === '2v2' ? parsedTeamCount * 2 : parsedTeamCount;
+        if (sortedPlayers.length < requiredPlayers) {
+          alert(`Not enough ranked players on the leaderboard. Need at least ${requiredPlayers} players for ${parsedTeamCount} teams in ${format} format.`);
+          return;
+        }
+
+        const teams = buildBracketTeams(sortedPlayers, parsedTeamCount, format, teamFormationStrategy, seedingStrategy, customTeams, leaderboardPlayers);
+        const bracket = generateBracketStructure(teams, bracketElimType, bracketMaxGames);
+
+        setBracketData(bracket);
+        setShowBracketModal(false);
+        setActiveTab('bracket');
+      };
+
+      const handleBracketScoreChange = (bracketSection, rIdx, mIdx, gIdx, teamKey, val) => {
+        const updatedBracket = { ...bracketData };
+        let match;
+
+        if (bracketSection === 'winners') match = updatedBracket.winnersRounds[rIdx][mIdx];
+        else if (bracketSection === 'losers') match = updatedBracket.losersRounds[rIdx][mIdx];
+        else if (bracketSection === 'grandFinals') match = updatedBracket.grandFinals[mIdx];
+        else if (bracketSection === 'thirdPlace') match = updatedBracket.thirdPlaceMatch;
+
+        match.games[gIdx][teamKey] = val === '' ? '' : sanitizeInt(val);
+        setBracketData(updatedBracket);
+      };
+
+      const handleBracketHandicapToggle = (bracketSection, rIdx, mIdx, checked) => {
+        const updatedBracket = { ...bracketData };
+        let match;
+
+        if (bracketSection === 'winners') match = updatedBracket.winnersRounds[rIdx][mIdx];
+        else if (bracketSection === 'losers') match = updatedBracket.losersRounds[rIdx][mIdx];
+        else if (bracketSection === 'grandFinals') match = updatedBracket.grandFinals[mIdx];
+        else if (bracketSection === 'thirdPlace') match = updatedBracket.thirdPlaceMatch;
+
+        match.isHandicap = checked;
+        match.overrideWinner = checked ? 1 : null;
+        setBracketData(updatedBracket);
+      };
+
+      const handleBracketOverrideWinnerChange = (bracketSection, rIdx, mIdx, winner) => {
+        const updatedBracket = { ...bracketData };
+        let match;
+
+        if (bracketSection === 'winners') match = updatedBracket.winnersRounds[rIdx][mIdx];
+        else if (bracketSection === 'losers') match = updatedBracket.losersRounds[rIdx][mIdx];
+        else if (bracketSection === 'grandFinals') match = updatedBracket.grandFinals[mIdx];
+        else if (bracketSection === 'thirdPlace') match = updatedBracket.thirdPlaceMatch;
+
+        match.overrideWinner = Number(winner);
+        setBracketData(updatedBracket);
+      };
+
+      const confirmBracketMatch = (bracketSection, rIdx, mIdx) => {
+        const updatedBracket = { ...bracketData };
+        let match;
+
+        if (bracketSection === 'winners') match = updatedBracket.winnersRounds[rIdx][mIdx];
+        else if (bracketSection === 'losers') match = updatedBracket.losersRounds[rIdx][mIdx];
+        else if (bracketSection === 'grandFinals') match = updatedBracket.grandFinals[mIdx];
+        else if (bracketSection === 'thirdPlace') match = updatedBracket.thirdPlaceMatch;
+
+        const winner = getMatchWinner(match);
+        if (!winner) {
+          alert('Cannot complete match: No team has won enough games.');
+          return;
+        }
+
+        match.winner = winner;
+        match.status = 'DONE';
+
+        const winningTeam = winner === 1 ? match.team1 : match.team2;
+        const losingTeam = winner === 1 ? match.team2 : match.team1;
+
+        if (bracketSection === 'winners') {
+          const numRounds = updatedBracket.winnersRounds.length;
+          const isSemiFinalRound = updatedBracket.type === 'single' ? (rIdx === numRounds - 1) : (rIdx === numRounds - 2);
+
+          if (rIdx + 1 < numRounds) {
+            const nextRound = updatedBracket.winnersRounds[rIdx + 1];
+            const nextMatchIdx = Math.floor(mIdx / 2);
+            const isTeam1 = mIdx % 2 === 0;
+
+            if (isTeam1) nextRound[nextMatchIdx].team1 = winningTeam;
+            else nextRound[nextMatchIdx].team2 = winningTeam;
+
+            if (nextRound[nextMatchIdx].team1 && nextRound[nextMatchIdx].team2 && !nextRound[nextMatchIdx].team1.isBye && !nextRound[nextMatchIdx].team2.isBye) {
+              nextRound[nextMatchIdx].status = 'READY';
+            }
+          } else {
+            // Reached Grand Finals slot in Single/Double elim
+            if (updatedBracket.grandFinals && updatedBracket.grandFinals[0]) {
+              const isTeam1 = mIdx % 2 === 0;
+              if (updatedBracket.type === 'single') {
+                if (isTeam1) updatedBracket.grandFinals[0].team1 = winningTeam;
+                else updatedBracket.grandFinals[0].team2 = winningTeam;
+              } else {
+                updatedBracket.grandFinals[0].team1 = winningTeam;
+              }
+
+              if (updatedBracket.grandFinals[0].team1 && updatedBracket.grandFinals[0].team2 && !updatedBracket.grandFinals[0].team1.isBye && !updatedBracket.grandFinals[0].team2.isBye) {
+                updatedBracket.grandFinals[0].status = 'READY';
+              }
+            }
+          }
+
+          // Propagate Semi-Final losers to 3rd/4th Place Match in Single Elimination
+          if (updatedBracket.type === 'single' && isSemiFinalRound && updatedBracket.thirdPlaceMatch) {
+            if (mIdx === 0) {
+              updatedBracket.thirdPlaceMatch.team1 = losingTeam;
+              updatedBracket.thirdPlaceMatch.hasPropagatedT1 = true;
+            } else if (mIdx === 1) {
+              updatedBracket.thirdPlaceMatch.team2 = losingTeam;
+              updatedBracket.thirdPlaceMatch.hasPropagatedT2 = true;
+            }
+
+            if (updatedBracket.thirdPlaceMatch.team1 && updatedBracket.thirdPlaceMatch.team2) {
+              const t1Bye = updatedBracket.thirdPlaceMatch.team1.isBye;
+              const t2Bye = updatedBracket.thirdPlaceMatch.team2.isBye;
+              if (t1Bye && t2Bye) {
+                updatedBracket.thirdPlaceMatch.winner = 1;
+                updatedBracket.thirdPlaceMatch.status = 'DONE';
+              } else if (t1Bye) {
+                updatedBracket.thirdPlaceMatch.winner = 2;
+                updatedBracket.thirdPlaceMatch.status = 'DONE';
+              } else if (t2Bye) {
+                updatedBracket.thirdPlaceMatch.winner = 1;
+                updatedBracket.thirdPlaceMatch.status = 'DONE';
+              } else {
+                updatedBracket.thirdPlaceMatch.status = 'READY';
+              }
+            }
+          }
+
+          // Championship: the final Winners round's loser doesn't drop to the Losers Bracket -
+          // that round IS the Grand Finals, and only decides 1st/2nd.
+          const isChampionshipFinalRound = updatedBracket.type === 'championship' && rIdx === numRounds - 1;
+          if ((updatedBracket.type === 'double' || updatedBracket.type === 'championship') && updatedBracket.losersRounds && !isChampionshipFinalRound) {
+            const targetLoserRoundIdx = rIdx === 0 ? 0 : (rIdx - 1) * 2 + 1;
+            const targetLoserRound = updatedBracket.losersRounds[targetLoserRoundIdx];
+            // Anti-rematch mirroring: a Round 1 drop (rIdx === 0) can't collide - two
+            // Round 1 matches never share a team, so their losers never played each
+            // other. From Round 2 on, the "parallel" slot (same match index) would pit
+            // this loser against a losers-bracket survivor who may be the very
+            // opponent they just lost to upstream. Mirroring the index within the
+            // receiving round routes the drop-in to the opposite half of the bracket's
+            // survivor lineage instead, avoiding that immediate re-pairing.
+            const targetLoserMatchIdx = rIdx === 0
+              ? Math.floor(mIdx / 2)
+              : (targetLoserRound ? targetLoserRound.length - 1 - mIdx : mIdx);
+            const targetLoserMatch = targetLoserRound?.[targetLoserMatchIdx];
+
+            if (targetLoserMatch) {
+              if (rIdx === 0) {
+                if (mIdx % 2 === 0) {
+                  targetLoserMatch.team1 = losingTeam;
+                  targetLoserMatch.hasPropagatedT1 = true;
+                } else {
+                  targetLoserMatch.team2 = losingTeam;
+                  targetLoserMatch.hasPropagatedT2 = true;
+                }
+              } else {
+                targetLoserMatch.team1 = losingTeam;
+                targetLoserMatch.hasPropagatedT1 = true;
+              }
+
+              if (targetLoserMatch.team1 && targetLoserMatch.team2 && !targetLoserMatch.team1.isBye && !targetLoserMatch.team2.isBye) {
+                targetLoserMatch.status = 'READY';
+              }
+            }
+
+            // Trigger BYE auto-advancements in Losers Bracket
+            processLoserBracketByes(updatedBracket.losersRounds);
+          }
+        }
+
+        if (bracketSection === 'losers') {
+          advanceLoserWinner(updatedBracket.losersRounds, rIdx, mIdx, winningTeam);
+
+          // Double Elimination only: the Losers Bracket champion advances to face the
+          // Winners Bracket champion in the Grand Finals. Championship Format has no
+          // such match - the Losers Bracket final IS the 3rd Place Match, decided already.
+          if (rIdx + 1 >= updatedBracket.losersRounds.length && updatedBracket.grandFinals) {
+            updatedBracket.grandFinals[0].team2 = winningTeam;
+            if (updatedBracket.grandFinals[0].team1 && updatedBracket.grandFinals[0].team2 && !updatedBracket.grandFinals[0].team1.isBye && !updatedBracket.grandFinals[0].team2.isBye) {
+              updatedBracket.grandFinals[0].status = 'READY';
+            }
+          }
+
+          // Trigger BYE auto-advancements in Losers Bracket
+          processLoserBracketByes(updatedBracket.losersRounds);
+        }
+
+        if (bracketSection === 'grandFinals') {
+          if (mIdx === 0 && updatedBracket.type === 'double') {
+            if (winner === 2) {
+              if (updatedBracket.grandFinals.length === 1) {
+                const resetMatch = {
+                  id: `m-grandFinal-2-0`,
+                  num: updatedBracket.grandFinals[0].num + 1,
+                  round: 2,
+                  position: 0,
+                  bracketType: 'grandFinal',
+                  label: 'Grand Finals Bracket Reset (Match 2)',
+                  team1: match.team1,
+                  team2: match.team2,
+                  games: Array.from({ length: updatedBracket.maxGames }, () => ({ t1: '', t2: '' })),
+                  winner: null,
+                  status: 'READY',
+                  isHandicap: false,
+                  overrideWinner: null,
+                  table: null
+                };
+                updatedBracket.grandFinals.push(resetMatch);
+              }
+            }
+          }
+        }
+
+        // Check if overall bracket is finished
+        let isBracketFinished = false;
+        if (updatedBracket.type === 'single') {
+          const finalMatch = updatedBracket.grandFinals ? updatedBracket.grandFinals[0] : null;
+          const finalDone = finalMatch && finalMatch.status === 'DONE';
+          const thirdPlaceDone = !updatedBracket.thirdPlaceMatch || updatedBracket.thirdPlaceMatch.status === 'DONE';
+          if (finalDone && thirdPlaceDone) {
+            isBracketFinished = true;
+          }
+        } else if (updatedBracket.type === 'championship') {
+          const wRounds = updatedBracket.winnersRounds;
+          const finalMatch = wRounds && wRounds.length > 0 ? wRounds[wRounds.length - 1][0] : null;
+          const finalDone = finalMatch && finalMatch.status === 'DONE';
+          const lRounds = updatedBracket.losersRounds;
+          const losersDone = !lRounds || lRounds.length === 0 || (lRounds[lRounds.length - 1][0] && lRounds[lRounds.length - 1][0].status === 'DONE');
+          if (finalDone && losersDone) {
+            isBracketFinished = true;
+          }
+        } else if (updatedBracket.type === 'double') {
+          const gfMatches = updatedBracket.grandFinals;
+          const lastGf = gfMatches[gfMatches.length - 1];
+          if (lastGf && lastGf.status === 'DONE') {
+            isBracketFinished = true;
+          }
+        }
+
+        if (isBracketFinished) {
+          updatedBracket.isCompleted = true;
+          setShowWinnerModal(true);
+        }
+
+        setBracketData(updatedBracket);
+      };
+
+      const completedMatchesList = getCompletedMatchesList();
+      const bracketStandings = calculateBracketStandings(bracketData);
+
+      // Extract and assign tables dynamically to ready/active matches without reassigning established tables
+      const getBracketReadyMatches = () => {
+        if (!bracketData) return [];
+        
+        const allMatches = [];
+        const collectMatches = (rounds, sectionName) => {
+          if (!rounds) return;
+          rounds.forEach((round, rIdx) => {
+            round.forEach((match, mIdx) => {
+              allMatches.push({ match, section: sectionName, rIdx, mIdx });
+            });
+          });
+        };
+
+        collectMatches(bracketData.winnersRounds, 'winners');
+        collectMatches(bracketData.losersRounds, 'losers');
+        if (bracketData.grandFinals) collectMatches([bracketData.grandFinals], 'grandFinals');
+        if (bracketData.thirdPlaceMatch) collectMatches([[bracketData.thirdPlaceMatch]], 'thirdPlace');
+
+        // Identify currently taken tables
+        const takenTables = new Set();
+        allMatches.forEach(({ match }) => {
+          if (match.status !== 'DONE' && match.table) {
+            takenTables.add(match.table);
+          }
+        });
+
+        // Find matches that are playable but lack a sticky table assignment
+        allMatches.forEach(({ match }) => {
+          const isPlayable = match.status === 'READY' || (match.team1 && match.team2 && !match.team1.isBye && !match.team2.isBye && match.status !== 'DONE');
+          if (isPlayable && !match.table) {
+            for (let t = 1; t <= tableCount; t++) {
+              if (!takenTables.has(t)) {
+                match.table = t;
+                takenTables.add(t);
+                break;
+              }
+            }
+          }
+        });
+
+        const activeAssignments = Array.from({ length: tableCount }, () => null);
+        allMatches.forEach(item => {
+          if (item.match.status !== 'DONE' && item.match.table && item.match.table <= tableCount) {
+            activeAssignments[item.match.table - 1] = item;
+          }
+        });
+
+        return activeAssignments;
+      };
+
+      const bracketReadyMatches = getBracketReadyMatches();
+
+      return (
+        <div className="flex flex-col min-h-screen">
+          
+          {/* Official Website Style Header (White Bar) */}
+          <header className="bg-white text-gray-900 border-b border-gray-200 sticky top-0 z-40 shadow-sm">
+            <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center gap-4 flex-nowrap">
+              <a 
+                href="https://calgaryfoosballclub.com/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity h-8 sm:h-12 flex-shrink-0 min-w-0"
+              >
+                <img 
+                  src="https://calgaryfoosballclub.com/assets/cfc-logo-wide.png" 
+                  alt="Calgary Foosball Club Crest" 
+                  className="h-full w-auto object-contain flex-shrink-0"
+                  onError={(e) => {
+                    e.target.onerror = null; 
+                    e.target.style.display = 'none';
+                  }}
+                />
+                <div className="border-l border-gray-300 pl-2 sm:pl-3 flex flex-col justify-center h-full flex-1 min-w-0">
+                  <h1 className="text-[11px] xs:text-[12px] sm:text-[13px] lg:text-[14px] font-bold tracking-normal text-gray-700 uppercase leading-tight whitespace-nowrap overflow-hidden text-ellipsis">
+                    Tournament Control Desk
+                  </h1>
+                </div>
+              </a>
+
+              {/* Hamburger Button */}
+              <button 
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="lg:hidden bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-bold px-3 py-1.5 text-xs rounded flex items-center gap-1 transition flex-shrink-0"
+                aria-label="Toggle Navigation Menu"
+              >
+                <span>☰</span>
+              </button>
+
+              {/* Action Buttons */}
+              <div className="hidden lg:flex items-center gap-2.5 flex-shrink-0 whitespace-nowrap">
+                <button 
+                  onClick={exportToCSV}
+                  className="bg-green-200 hover:bg-green-300 text-green-800 font-bold px-3 py-2 text-xs uppercase tracking-wider rounded border border-green-600 flex items-center gap-1.5 transition"
+                  title="Export match results to Excel CSV"
+                >
+                  <span>📊</span> CSV Export
+                </button>
+
+                <button
+                  onClick={handleDrawBracketsClick}
+                  disabled={isLocked}
+                  className="bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-2 text-xs uppercase tracking-widest rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
+                >
+                  🏆 Draw Brackets
+                </button>
+
+                {!isLocked ? (
+                  <button
+                    onClick={() => setShowPinModal(true)}
+                    className="bg-gray-900 hover:bg-black text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
+                  >
+                    🔓 Admin Lock
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowPinModal(true)}
+                    className="bg-rose-700 hover:bg-rose-800 text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
+                  >
+                    🔒 View Only (Unlock)
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Dropdown Menu */}
+            {isMobileMenuOpen && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex justify-center items-start pt-16 p-4 lg:hidden">
+                <div className="bg-cfc-panel border border-cfc-border rounded-xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
+                  <div className="flex justify-between items-center border-b border-cfc-border pb-3">
+                    <h3 className="text-white font-black uppercase text-sm tracking-wider">Tournament Options</h3>
+                    <button 
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="text-gray-400 hover:text-white text-lg font-bold px-2 py-0.5 rounded"
+                      aria-label="Close menu"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    <button 
+                      onClick={() => { exportToCSV(); setIsMobileMenuOpen(false); }}
+                      className="w-full bg-green-200 hover:bg-green-300 text-green-800 font-bold px-4 py-3 text-xs uppercase tracking-wider rounded border border-green-600 flex items-center justify-center gap-2 transition"
+                    >
+                      <span>📊</span> CSV Export
+                    </button>
+
+                    <button
+                      onClick={() => { setIsMobileMenuOpen(false); handleDrawBracketsClick(); }}
+                      disabled={isLocked}
+                      className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-3 text-xs uppercase tracking-widest rounded shadow transition text-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
+                    >
+                      🏆 Draw Brackets
+                    </button>
+
+                    {!isLocked ? (
+                      <button
+                        onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
+                        className="w-full bg-gray-900 hover:bg-black text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center border border-gray-700"
+                      >
+                        🔓 Admin Lock
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
+                        className="w-full bg-rose-700 hover:bg-rose-800 text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center"
+                      >
+                        🔒 View Only (Unlock)
+                      </button>
+                    )}
+                  </div>
+
+                  <button 
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="w-full mt-2 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </header>
+
+          {/* Main Dashboard Container */}
+          <main className="max-w-6xl w-full mx-auto p-4 sm:p-6 space-y-8 flex-1">
+
+            {isLocked && (
+              <div className="bg-rose-950/60 border border-rose-700 text-rose-200 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center gap-2">
+                <span>👁</span> View Only Mode — editing is disabled. Click "View Only (Unlock)" and enter the PIN to resume editing.
+              </div>
+            )}
+
+            {showPinModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-cfc-red flex items-center gap-2">
+                    <span>🔒</span> {isLocked ? 'Unlock Tool' : 'Enable Admin Lock'}
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    {isLocked
+                      ? 'Enter the tournament PIN to exit View Only mode and resume editing.'
+                      : 'Enter the tournament PIN to place the tool into View Only mode.'}
+                  </p>
+                  <form onSubmit={handlePinSubmit} className="space-y-4">
+                    <input
+                      type="password"
+                      maxLength="4"
+                      value={pinInput}
+                      onChange={e => setPinInput(e.target.value)}
+                      placeholder="Enter PIN"
+                      className="w-full text-center text-2xl tracking-widest bg-cfc-dark border border-cfc-border rounded py-2 text-white focus:outline-none focus:border-cfc-red"
+                      autoFocus
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setShowPinModal(false); setPinInput(''); }}
+                        className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                      >
+                        {isLocked ? 'Unlock' : 'Lock'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {showPausedWarningModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>⚠️</span> Paused Players Detected
+                  </h3>
+                  <p className="text-xs text-gray-300">
+                    There are Paused players on the roster. They will be included in the Bracket draw unless you delete them first. Would you like to continue or cancel?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowPausedWarningModal(false)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => { setShowPausedWarningModal(false); openBracketModal(); }}
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {pendingCustomPlayerName !== null && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>⚠️</span> Not Found on Leaderboard
+                  </h3>
+                  <p className="text-xs text-gray-300">
+                    "{pendingCustomPlayerName}" doesn't exactly match a name on the club leaderboard. Add them anyway as a new player?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setPendingCustomPlayerName(null)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={confirmAddCustomPlayer}
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                    >
+                      Add Anyway
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showLeaderboardPicker && (() => {
+              const onRoster = new Set(players.map(p => p.name.trim().toLowerCase()));
+              const sortedLeaderboard = [...leaderboardPlayers].sort((a, b) => a.name.localeCompare(b.name));
+              const available = sortedLeaderboard.filter(lp => !onRoster.has(lp.name.trim().toLowerCase()));
+              const allSelected = available.length > 0 && available.every(lp => pickerSelection.includes(lp.name));
+              return (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                  <div className="bg-cfc-panel border border-cfc-border rounded-xl max-w-md w-full max-h-[90vh] flex flex-col shadow-2xl">
+                    <div className="p-5 pb-3 border-b border-cfc-border space-y-1">
+                      <h3 className="text-lg font-black text-white uppercase tracking-wide">Add from Leaderboard</h3>
+                      <p className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${leaderboardStatus === 'live' ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : 'Club leaderboard: cached snapshot (offline)'}
+                      </p>
+                    </div>
+
+                    <div className="flex justify-between items-center px-5 py-2 text-xs border-b border-cfc-border/60">
+                      <span className="text-gray-400">{pickerSelection.length} selected</span>
+                      <div className="flex gap-3">
+                        <button
+                          onClick={() => setPickerSelection(allSelected ? [] : available.map(lp => lp.name))}
+                          disabled={available.length === 0}
+                          className="text-cfc-red hover:underline font-semibold disabled:opacity-40 disabled:no-underline"
+                        >
+                          {allSelected ? 'Deselect All' : 'Select All'}
+                        </button>
+                        <button
+                          onClick={() => setPickerSelection([])}
+                          disabled={pickerSelection.length === 0}
+                          className="text-gray-400 hover:text-white font-semibold disabled:opacity-40"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-y-auto flex-1 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {sortedLeaderboard.map(lp => {
+                        const alreadyAdded = onRoster.has(lp.name.trim().toLowerCase());
+                        const checked = alreadyAdded || pickerSelection.includes(lp.name);
+                        return (
+                          <label
+                            key={lp.name}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded border text-sm transition ${
+                              alreadyAdded
+                                ? 'bg-cfc-dark/40 border-cfc-border/40 text-gray-500 cursor-not-allowed'
+                                : checked
+                                  ? 'bg-emerald-950/40 border-emerald-700 text-white cursor-pointer'
+                                  : 'bg-cfc-dark border-cfc-border text-gray-200 hover:border-cfc-red cursor-pointer'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={alreadyAdded}
+                              onChange={() => togglePickerName(lp.name)}
+                              className="w-4 h-4 rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0"
+                            />
+                            <span className="truncate flex-1">{lp.name}</span>
+                            {alreadyAdded && <span className="text-[10px] font-mono text-gray-500">On roster</span>}
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    <div className="p-4 border-t border-cfc-border flex gap-2">
+                      <button
+                        onClick={() => { setShowLeaderboardPicker(false); setPickerSelection([]); }}
+                        className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2.5 rounded font-semibold text-gray-300"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={addPickedPlayers}
+                        disabled={pickerSelection.length === 0}
+                        className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-xs py-2.5 rounded font-bold text-white uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
+                      >
+                        Add {pickerSelection.length > 0 ? pickerSelection.length : ''} Selected
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {showClearMatchesWarning && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-amber-600 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>⚠️</span> Clear All Matches?
+                  </h3>
+                  <p className="text-xs text-gray-300">
+                    This will clear every match result in both the Monster / Open Play and Bracket Playoff stages, and reset all player stats (wins, losses, games for/against) to zero.
+                    {bracketData ? ' The playoff bracket\'s team assignments will be kept - it will return to Round 1 with everything unplayed.' : ''}
+                    {' '}The player roster itself will not be affected. This cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowClearMatchesWarning(false)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={resetMatchesOnly}
+                      className="flex-1 bg-amber-600 hover:bg-amber-500 text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                    >
+                      Clear Matches
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showFullResetWarning && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-rose-700 p-6 rounded-xl max-w-sm w-full space-y-4 shadow-2xl">
+                  <h3 className="text-lg font-bold text-rose-400 flex items-center gap-2">
+                    <span>⚠️</span> Full Tournament Reset?
+                  </h3>
+                  <p className="text-xs text-gray-300">
+                    This will permanently delete every player on the roster, along with all matches and the playoff bracket. This cannot be undone.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowFullResetWarning(false)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={fullReset}
+                      className="flex-1 bg-rose-700 hover:bg-rose-600 text-xs py-2 rounded font-semibold text-white uppercase tracking-wider"
+                    >
+                      Full Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {showWinnerModal && (
+              <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border-2 border-yellow-500/60 p-6 rounded-xl max-w-md w-full space-y-5 shadow-2xl text-center relative overflow-hidden">
+                  <div className="space-y-1">
+                    <span className="text-4xl block animate-bounce">🏆</span>
+                    <h3 className="text-2xl font-black text-white uppercase tracking-wider">
+                      Tournament Complete!
+                    </h3>
+                    <p className="text-xs text-gray-400">Final Playoff Standings</p>
+                  </div>
+
+                  <div className="space-y-2 text-left bg-cfc-dark/80 p-4 rounded-lg border border-cfc-border">
+                    {bracketStandings.filter(item => item.place <= 3).map((item) => {
+                      let trophy = null;
+                      if (item.place === 1) trophy = <span className="text-xl">🥇</span>;
+                      else if (item.place === 2) trophy = <span className="text-xl">🥈</span>;
+                      else if (item.place === 3) trophy = <span className="text-xl">🥉</span>;
+
+                      return (
+                        <div key={item.place} className="flex items-center justify-between p-2 border-b border-cfc-border/60 last:border-b-0">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 flex justify-center">{trophy || <span className="text-xs font-bold text-gray-400">#{item.place}</span>}</div>
+                            <span className="font-bold text-sm text-white">{item.team ? item.team.name : 'Unknown'}</span>
+                          </div>
+                          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                            {item.place === 1 ? '1st Place' : item.place === 2 ? '2nd Place' : item.place === 3 ? '3rd Place' : `${item.place}th Place`}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button 
+                    onClick={() => setShowWinnerModal(false)}
+                    className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
+                  >
+                    Close Results
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showBracketModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                <div className="bg-cfc-panel border border-cfc-border p-6 rounded-xl max-w-xl w-full space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <h3 className="text-xl font-black text-white uppercase tracking-wide flex items-center gap-2 border-b border-cfc-border pb-3">
+                    <span className="text-cfc-red">🏆</span> Generate Bracket Stage
+                  </h3>
+                  
+                  <div className="space-y-3 text-xs">
+                    <div>
+                      <label className="text-gray-300 block mb-1 font-semibold">Number of Teams</label>
+                      <input 
+                        type="number"
+                        min="2"
+                        max="64"
+                        value={bracketTeamCount}
+                        onChange={e => {
+                          const val = e.target.value;
+                          setBracketTeamCount(val);
+                          if (val !== '' && !isNaN(parseInt(val, 10))) {
+                            initManualTeams(parseInt(val, 10), format);
+                          }
+                        }}
+                        placeholder="Enter team count (min 2)"
+                        className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-gray-300 block mb-1 font-semibold">Elimination Format</label>
+                      <select 
+                        value={bracketElimType}
+                        onChange={e => setBracketElimType(e.target.value)}
+                        className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
+                      >
+                        <option value="single">Single Elimination</option>
+                        <option value="double">Double Elimination</option>
+                        <option value="championship">Championship</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-gray-300 block mb-1 font-semibold">Max Games / Match (Best of N)</label>
+                      <select 
+                        value={bracketMaxGames}
+                        onChange={e => setBracketMaxGames(Number(e.target.value))}
+                        className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
+                      >
+                        <option value={1}>Best of 1</option>
+                        <option value={3}>Best of 3</option>
+                        <option value={5}>Best of 5</option>
+                        <option value={7}>Best of 7</option>
+                      </select>
+                    </div>
+
+                    {format === '2v2' && (
+                      <div>
+                        <label className="text-gray-300 block mb-1 font-semibold">Team Formation Strategy</label>
+                        <select 
+                          value={teamFormationStrategy}
+                          onChange={e => setTeamFormationStrategy(e.target.value)}
+                          className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
+                        >
+                          <option value="fair">Fair Teams (1st + Nth, 2nd + N-1th)</option>
+                          <option value="topBias">Top Bias (1st + 2nd, 3rd + 4th)</option>
+                          <option value="topBottomRandom">Top-Bottom Random</option>
+                          <option value="random">Random Teams</option>
+                          <option value="manual">Manual Selection</option>
+                        </select>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="text-gray-300 block mb-1 font-semibold">Seeding Strategy</label>
+                      <select 
+                        value={seedingStrategy}
+                        onChange={e => setSeedingStrategy(e.target.value)}
+                        className="w-full bg-cfc-dark border border-cfc-border rounded p-2 text-white focus:outline-none focus:border-cfc-red"
+                      >
+                        <option value="ranking">Tournament Ranking</option>
+                        <option value="random">Random Seeding</option>
+                        <option value="elo">Player ELO</option>
+                      </select>
+                    </div>
+
+                    {teamFormationStrategy === 'manual' && format === '2v2' && (
+                      <div className="pt-2 space-y-2 border-t border-cfc-border">
+                        <span className="text-cfc-red font-semibold block uppercase tracking-wider text-[11px]">Manual Pairings</span>
+                        {customTeams.map((team, idx) => {
+                          const count = parseInt(bracketTeamCount, 10) || 2;
+                          const available = sortedPlayers.slice(0, count * 2);
+                          return (
+                            <div key={idx} className="bg-cfc-dark p-2 rounded border border-cfc-border flex items-center gap-2">
+                              <span className="font-bold text-gray-400 w-16">Team {idx + 1}:</span>
+                              <select 
+                                value={team.p1 ? team.p1.id : ''}
+                                onChange={e => {
+                                  const newP1 = available.find(p => p.id === Number(e.target.value));
+                                  const updated = [...customTeams];
+                                  updated[idx].p1 = newP1;
+                                  setCustomTeams(updated);
+                                }}
+                                className="bg-cfc-panel border border-cfc-border rounded p-1 text-white flex-1"
+                              >
+                                <option value="">Select Player 1</option>
+                                {available.map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                              <span className="text-gray-500 font-bold">&</span>
+                              <select 
+                                value={team.p2 ? team.p2.id : ''}
+                                onChange={e => {
+                                  const newP2 = available.find(p => p.id === Number(e.target.value));
+                                  const updated = [...customTeams];
+                                  updated[idx].p2 = newP2;
+                                  setCustomTeams(updated);
+                                }}
+                                className="bg-cfc-panel border border-cfc-border rounded p-1 text-white flex-1"
+                              >
+                                <option value="">Select Player 2</option>
+                                {available.map(p => (
+                                  <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex gap-2 pt-2">
+                    <button 
+                      onClick={() => setShowBracketModal(false)}
+                      className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-xs py-2 rounded font-semibold text-gray-300"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleGenerateBracket}
+                      className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-xs py-2 rounded font-bold uppercase tracking-wider text-white"
+                    >
+                      Build Bracket
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Navigation Tabs */}
+            <div className="flex border-b border-cfc-border gap-6">
+              <button 
+                onClick={() => setActiveTab('pool')}
+                className={`pb-3 text-sm font-black uppercase tracking-wider border-b-2 transition ${activeTab === 'pool' ? 'border-cfc-red text-cfc-red' : 'border-transparent text-gray-400 hover:text-white'}`}
+              >
+                🎲 Monster / Open Play Stage
+              </button>
+                <button 
+                  onClick={() => setActiveTab('bracket')}
+                  className={`pb-3 text-sm font-black uppercase tracking-wider border-b-2 transition flex items-center gap-1.5 ${
+                    activeTab === 'bracket' ? 'border-cfc-red text-cfc-red' : 'border-transparent text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <span>🏆</span> 
+                  <span>Bracket Playoff Stage</span>
+                  {bracketData && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-sans font-normal ${
+                      bracketData.isCompleted 
+                        ? 'bg-amber-950 text-amber-400 border-amber-800'
+                        : 'bg-emerald-950 text-emerald-400 border-emerald-800'
+                    }`}>
+                      {bracketData.isCompleted ? 'COMPLETE' : 'ACTIVE'}
+                    </span>
+                  )}
+                </button>
+            </div>
+
+            {activeTab === 'pool' ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  {/* 1. Setup Panel */}
+                  <div className="bg-cfc-panel p-5 rounded-xl border border-cfc-border space-y-4 shadow-lg">
+                    <h2 className="text-lg font-black text-white uppercase tracking-wide border-b border-cfc-border pb-2">
+                      1. Tournament Setup
+                    </h2>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1 font-semibold">Tournament Name</label>
+                        <input
+                          type="text"
+                          value={tournamentName}
+                          onChange={e => setTournamentName(sanitizeInput(e.target.value, 35))}
+                          placeholder="e.g. Friday Night Open"
+                          disabled={isLocked}
+                          className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Tables Available</label>
+                        <select
+                          value={tableCount}
+                          onChange={e => setTableCount(parseInt(e.target.value, 10))}
+                          disabled={isLocked}
+                          className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        >
+                          {Array.from({ length: 10 }, (_, i) => i + 1).map(num => (
+                            <option key={num} value={num}>{num} {num === 1 ? 'Table' : 'Tables'}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Match Format</label>
+                        <select
+                          value={format}
+                          onChange={e => setFormat(e.target.value)}
+                          disabled={isLocked}
+                          className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        >
+                          <option value="2v2">2v2 (Doubles)</option>
+                          <option value="1v1">1v1 (Singles)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-gray-400 block mb-1">Max Games / Match (Best of N)</label>
+                        <select
+                          value={maxGames}
+                          onChange={e => setMaxGames(Number(e.target.value))}
+                          disabled={isLocked}
+                          className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        >
+                          <option value={1}>Best of 1</option>
+                          <option value={3}>Best of 3</option>
+                          <option value={5}>Best of 5</option>
+                          <option value={7}>Best of 7</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleDrawMatch}
+                        disabled={isLocked}
+                        className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
+                      >
+                        🎲 Draw New Match
+                      </button>
+                    </div>
+
+                    <div className="pt-4 border-t border-cfc-border space-y-2">
+                      <span className="text-xs text-gray-400 block font-semibold uppercase tracking-wider">Tournament Resets</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowClearMatchesWarning(true)}
+                          disabled={isLocked}
+                          className="flex-1 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Clear Matches
+                        </button>
+                        <button
+                          onClick={() => setShowFullResetWarning(true)}
+                          disabled={isLocked}
+                          className="flex-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/80 text-rose-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Full Reset
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2. Roster Panel */}
+                  <div className="bg-cfc-panel p-5 rounded-xl border border-cfc-border space-y-4 md:col-span-2 shadow-lg">
+                    <div className="flex justify-between items-center border-b border-cfc-border pb-2">
+                      <h2 className="text-lg font-black text-white uppercase tracking-wide">
+                        2. Player Roster ({players.length})
+                      </h2>
+                      <span className="text-xs text-gray-400 font-mono">Active: {players.filter(p => p.active).length}</span>
+                    </div>
+
+                    <form onSubmit={handleAddPlayer} className="flex gap-2">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          placeholder="Search leaderboard or enter a guest name"
+                          value={newPlayerName}
+                          onChange={e => { setNewPlayerName(e.target.value); setShowPlayerSuggestions(true); }}
+                          onFocus={() => setShowPlayerSuggestions(true)}
+                          onBlur={() => setTimeout(() => setShowPlayerSuggestions(false), 150)}
+                          maxLength="25"
+                          disabled={isLocked}
+                          autoComplete="off"
+                          className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        />
+                        {showPlayerSuggestions && newPlayerName.trim() && !isLocked && (() => {
+                          const query = newPlayerName.trim().toLowerCase();
+                          const matches = leaderboardPlayers.filter(lp => lp.name.toLowerCase().includes(query)).slice(0, 8);
+                          if (matches.length === 0) return null;
+                          return (
+                            <div className="absolute z-20 mt-1 w-full bg-cfc-dark border border-cfc-border rounded shadow-2xl max-h-52 overflow-y-auto">
+                              {matches.map(lp => (
+                                <div
+                                  key={lp.name}
+                                  onMouseDown={() => { setNewPlayerName(lp.name); setShowPlayerSuggestions(false); }}
+                                  className="px-3 py-1.5 text-sm text-white hover:bg-cfc-panelLight cursor-pointer border-b border-cfc-border/60 last:border-b-0"
+                                >
+                                  {lp.name}
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      <button type="submit" disabled={isLocked} className="bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-white px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed">
+                        Add Player
+                      </button>
+                    </form>
+                    <div className="flex justify-between items-center gap-2">
+                      <p className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${leaderboardStatus === 'live' ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
+                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : 'Club leaderboard: cached snapshot (offline)'}
+                      </p>
+                      <button
+                        onClick={openLeaderboardPicker}
+                        disabled={isLocked}
+                        className="bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-gray-200 px-3 py-1 rounded text-[11px] font-bold uppercase tracking-wider transition flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        + Add from Leaderboard
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[358px] overflow-y-auto pt-2">
+                      {players.map(p => (
+                        <div key={p.id} className={`p-2.5 rounded border flex items-center justify-between gap-2 text-sm transition ${p.active ? 'bg-cfc-dark border-cfc-border' : 'bg-cfc-dark/40 border-cfc-border/40 opacity-50'}`}>
+
+                          {editingPlayerId === p.id ? (
+                            <div className="flex gap-1 flex-1 min-w-0">
+                              <input
+                                type="text"
+                                value={editingName}
+                                maxLength="25"
+                                onChange={e => setEditingName(e.target.value)}
+                                disabled={isLocked}
+                                className="w-full min-w-0 bg-cfc-panel border border-cfc-border text-xs px-2 py-1 rounded text-white disabled:opacity-50"
+                                autoFocus
+                              />
+                              <button onClick={() => savePlayerName(p.id)} disabled={isLocked} className="text-xs bg-emerald-700 px-2 py-1 rounded text-white flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                              {(() => {
+                                const lbPlayer = findLeaderboardPlayer(leaderboardPlayers, p.name);
+                                const elo = lbPlayer ? (format === '1v1' ? lbPlayer.singlesElo : lbPlayer.doublesElo) : null;
+                                return (
+                                  <div className="min-w-0 flex-1">
+                                    <span className={`font-medium truncate block ${lbPlayer ? 'text-emerald-400' : ''}`}>{p.name}</span>
+                                    {lbPlayer && (
+                                      <span className="text-[10px] text-gray-400 font-mono block">
+                                        {format === '1v1' ? 'Singles' : 'Doubles'} ELO: {elo !== null ? elo : 'Unranked'}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+
+                          {/* Full inline actions - roomy screens only */}
+                          <div className="hidden lg:flex items-center gap-1.5 flex-shrink-0">
+                            <button
+                              onClick={() => togglePaid(p.id)}
+                              disabled={isLocked}
+                              className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
+                            >
+                              {p.paid ? 'Paid' : 'Unpaid'}
+                            </button>
+
+                            <button
+                              onClick={() => toggleActive(p.id)}
+                              disabled={isLocked}
+                              className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
+                            >
+                              {p.active ? 'Active' : 'Paused'}
+                            </button>
+
+                            <button
+                              onClick={() => startEditingPlayer(p)}
+                              disabled={isLocked}
+                              className="text-xs text-gray-400 hover:text-white px-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Edit Name"
+                            >
+                              ✏️
+                            </button>
+
+                            <button
+                              onClick={() => removePlayer(p.id)}
+                              disabled={isLocked}
+                              className="text-xs text-rose-400 hover:text-rose-300 px-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Delete Player"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+
+                          {/* Kebab menu - narrower screens, keeps the name from truncating */}
+                          <div className="lg:hidden relative flex-shrink-0">
+                            <button
+                              onClick={() => setOpenActionMenuId(openActionMenuId === p.id ? null : p.id)}
+                              className="text-gray-400 hover:text-white px-2 py-1 text-base leading-none"
+                              title="Player options"
+                            >
+                              ⋮
+                            </button>
+                            {openActionMenuId === p.id && (
+                              <React.Fragment>
+                                <div className="fixed inset-0 z-30" onClick={() => setOpenActionMenuId(null)}></div>
+                                <div className="absolute right-0 top-full mt-1 z-40 bg-cfc-panel border border-cfc-border rounded-lg shadow-2xl p-2 flex flex-col gap-1.5 w-max">
+                                  <button
+                                    onClick={() => { togglePaid(p.id); setOpenActionMenuId(null); }}
+                                    disabled={isLocked}
+                                    className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
+                                  >
+                                    {p.paid ? 'Paid' : 'Unpaid'}
+                                  </button>
+                                  <button
+                                    onClick={() => { toggleActive(p.id); setOpenActionMenuId(null); }}
+                                    disabled={isLocked}
+                                    className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
+                                  >
+                                    {p.active ? 'Active' : 'Paused'}
+                                  </button>
+                                  <button
+                                    onClick={() => { startEditingPlayer(p); setOpenActionMenuId(null); }}
+                                    disabled={isLocked}
+                                    className="text-xs text-gray-300 hover:text-white px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    ✏️ Edit Name
+                                  </button>
+                                  <button
+                                    onClick={() => { removePlayer(p.id); setOpenActionMenuId(null); }}
+                                    disabled={isLocked}
+                                    className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
+                                  >
+                                    🗑️ Delete Player
+                                  </button>
+                                </div>
+                              </React.Fragment>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Table Arena */}
+                <div>
+                  <h2 className="text-xl font-black mb-4 text-white uppercase tracking-wide">
+                    Live Match Tables
+                  </h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {Array.from({ length: tableCount }).map((_, idx) => {
+                      const tableNum = idx + 1;
+                      const activeMatch = matches.find(m => m.table === tableNum && m.status === 'LIVE');
+                      const calculatedWinner = activeMatch ? getMatchWinner(activeMatch) : null;
+
+                      return (
+                        <div key={tableNum} className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
+                          <div className="flex justify-between items-center border-b border-cfc-border pb-3">
+                            <span className="font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
+                              <span className="text-cfc-red">●</span> Table #{tableNum}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              {activeMatch && (
+                                <button
+                                  onClick={() => handleDeleteMatch(activeMatch.id)}
+                                  disabled={isLocked}
+                                  className="text-xs bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 px-2 py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  🗑️ Delete
+                                </button>
+                              )}
+                              <span className={`text-[11px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider ${activeMatch ? 'bg-cfc-red text-white animate-pulse' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}>
+                                {activeMatch ? 'MATCH IN PROGRESS' : 'FREE'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {activeMatch ? (
+                            <div className="space-y-4">
+                              <div className="bg-cfc-dark p-3 rounded text-center grid grid-cols-5 items-center border border-cfc-border">
+                                <div className="col-span-2 text-white font-bold text-sm truncate">
+                                  {activeMatch.team1.map(p => p.name).join(' & ')}
+                                </div>
+                                <div className="text-xs text-cfc-red font-black">VS</div>
+                                <div className="col-span-2 text-white font-bold text-sm truncate">
+                                  {activeMatch.team2.map(p => p.name).join(' & ')}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2 bg-cfc-dark/50 p-3 rounded border border-cfc-border/60">
+                                <span className="text-xs text-gray-400 block font-semibold mb-1 uppercase tracking-wider">Game Scores</span>
+                                {activeMatch.games.map((game, gIdx) => (
+                                  <div key={gIdx} className="flex items-center justify-between text-xs gap-3">
+                                    <span className="text-gray-400 font-mono w-16">Game #{gIdx + 1}:</span>
+                                    <input
+                                      type="number" min="0" max="99"
+                                      value={game.t1}
+                                      onChange={e => handleGameScoreChange(activeMatch.id, gIdx, 't1', e.target.value)}
+                                      placeholder=""
+                                      disabled={isLocked}
+                                      className="w-16 bg-cfc-dark border-2 border-sky-400 text-center rounded py-1 text-sky-200 font-bold focus:outline-none focus:border-sky-300 disabled:opacity-50"
+                                    />
+                                    <span className="text-gray-600 font-bold">-</span>
+                                    <input
+                                      type="number" min="0" max="99"
+                                      value={game.t2}
+                                      onChange={e => handleGameScoreChange(activeMatch.id, gIdx, 't2', e.target.value)}
+                                      placeholder=""
+                                      disabled={isLocked}
+                                      className="w-16 bg-cfc-dark border-2 border-sky-400 text-center rounded py-1 text-sky-200 font-bold focus:outline-none focus:border-sky-300 disabled:opacity-50"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs pt-1 border-t border-cfc-border/60">
+                                <label className="flex items-center gap-2 cursor-pointer text-gray-300">
+                                  <input
+                                    type="checkbox"
+                                    checked={activeMatch.isHandicap}
+                                    onChange={e => handleHandicapToggle(activeMatch.id, e.target.checked)}
+                                    disabled={isLocked}
+                                    className="rounded border-cfc-border bg-cfc-dark text-cfc-red focus:ring-0 disabled:opacity-50"
+                                  />
+                                  Handicap / Manual Override
+                                </label>
+
+                                {activeMatch.isHandicap && (
+                                  <select
+                                    value={activeMatch.overrideWinner || 1}
+                                    onChange={e => handleOverrideWinnerChange(activeMatch.id, e.target.value)}
+                                    disabled={isLocked}
+                                    className="bg-cfc-dark border border-cfc-border rounded px-2 py-1 text-cfc-red font-semibold disabled:opacity-50"
+                                  >
+                                    <option value="1">Team 1 Wins</option>
+                                    <option value="2">Team 2 Wins</option>
+                                  </select>
+                                )}
+                              </div>
+
+                              <button
+                                onClick={() => completeMatch(activeMatch.id)}
+                                disabled={!calculatedWinner || isLocked}
+                                className={`w-full py-2.5 rounded font-bold text-xs uppercase tracking-wider transition ${calculatedWinner && !isLocked ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md' : 'bg-cfc-dark border border-cfc-border text-gray-600 cursor-not-allowed'}`}
+                              >
+                                {calculatedWinner ? `Finish Match (Winner: Team ${calculatedWinner})` : 'Enter Winning Scores to Finish'}
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-gray-500 text-xs italic py-8 text-center uppercase tracking-wider">Table available for assignment</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Leaderboard Panel */}
+                <div className="bg-cfc-panel rounded-xl border border-cfc-border p-5 shadow-lg">
+                  <h2 className="text-xl font-black mb-4 text-white uppercase tracking-wide border-b border-cfc-border pb-2">
+                    Leaderboard
+                  </h2>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-cfc-dark text-gray-400 uppercase text-[11px] tracking-wider border-b border-cfc-border">
+                        <tr>
+                          <th className="p-3">Rank</th>
+                          <th className="p-3">Player</th>
+                          <th className="p-3">Matches Played</th>
+                          <th className="p-3">Wins</th>
+                          <th className="p-3">Losses</th>
+                          <th className="p-3">Win %</th>
+                          <th className="p-3">GF</th>
+                          <th className="p-3">GA</th>
+                          <th className="p-3">Avg Diff</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-cfc-border">
+                        {sortedPlayers.map((p, idx) => (
+                          <tr key={p.id} className="hover:bg-cfc-panelLight/50 transition">
+                            <td className="p-3 font-black text-cfc-red">#{idx + 1}</td>
+                            <td className="p-3 font-semibold">{p.name} {!p.active && <span className="text-xs text-gray-500 font-normal">(Paused)</span>}</td>
+                            <td className="p-3 font-mono text-gray-300 font-bold">{p.totalGames}</td>
+                            <td className="p-3 text-emerald-400 font-bold">{p.wins}</td>
+                            <td className="p-3 text-rose-400 font-bold">{p.losses}</td>
+                            <td className="p-3 font-mono">{p.winPct}%</td>
+                            <td className="p-3 font-mono text-gray-300">{p.gf}</td>
+                            <td className="p-3 font-mono text-gray-300">{p.ga}</td>
+                            <td className="p-3 font-mono">{p.avgDiff}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Match History Table */}
+                <div className="bg-cfc-panel rounded-xl border border-cfc-border p-5 shadow-lg space-y-4">
+                  <div className="flex justify-between items-center border-b border-cfc-border pb-2">
+                    <h2 className="text-xl font-black text-white uppercase tracking-wide">
+                      Match History
+                    </h2>
+                    <span className="text-xs text-gray-400 font-mono">
+                      Completed Matches: {completedMatchesList.length}
+                    </span>
+                  </div>
+
+                  {completedMatchesList.length === 0 ? (
+                    <p className="text-gray-500 text-xs italic py-6 text-center uppercase tracking-wider">
+                      No completed matches recorded yet.
+                    </p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-cfc-dark text-gray-400 uppercase text-[10px] tracking-wider border-b border-cfc-border">
+                          <tr>
+                            <th className="p-3">Stage</th>
+                            <th className="p-3">Winning Team</th>
+                            <th className="p-3">Losing Team</th>
+                            <th className="p-3">Game Scores (Win - Loss)</th>
+                            <th className="p-3 text-center">Handicap / Override</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-cfc-border">
+                          {completedMatchesList.map((m, idx) => {
+                            const winTeam = m.winner === 1 ? m.team1 : m.team2;
+                            const loseTeam = m.winner === 1 ? m.team2 : m.team1;
+
+                            const winP1 = winTeam[0] ? winTeam[0].name : '';
+                            const winP2 = winTeam[1] ? winTeam[1].name : '';
+                            const loseP1 = loseTeam[0] ? loseTeam[0].name : '';
+                            const loseP2 = loseTeam[1] ? loseTeam[1].name : '';
+
+                            const winTeamStr = [winP1, winP2].filter(Boolean).join(' & ');
+                            const loseTeamStr = [loseP1, loseP2].filter(Boolean).join(' & ');
+
+                            const validGames = m.games.filter(g => g.t1 !== '' && g.t2 !== '');
+
+                            return (
+                              <tr key={idx} className="hover:bg-cfc-panelLight/50 transition">
+                                <td className="p-3 font-semibold text-gray-400">{m.stage}</td>
+                                <td className="p-3 font-bold text-emerald-400">{winTeamStr}</td>
+                                <td className="p-3 font-medium text-gray-300">{loseTeamStr}</td>
+                                <td className="p-3 font-mono">
+                                  {validGames.map((g, gIdx) => {
+                                    const s1 = parseInt(g.t1, 10);
+                                    const s2 = parseInt(g.t2, 10);
+                                    const winScore = m.winner === 1 ? s1 : s2;
+                                    const loseScore = m.winner === 1 ? s2 : s1;
+                                    return (
+                                      <span key={gIdx} className="mr-2 inline-block bg-cfc-dark px-2 py-0.5 rounded border border-cfc-border whitespace-nowrap">
+                                        G{gIdx + 1}: <strong className="text-white">{winScore}</strong> - {loseScore}
+                                      </span>
+                                    );
+                                  })}
+                                </td>
+                                <td className="p-3 text-center font-mono text-gray-400">
+                                  {m.isHandicap}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="space-y-6">
+                {!bracketData ? (
+                  <div className="bg-cfc-panel rounded-xl border border-cfc-border p-12 text-center space-y-4 shadow-lg">
+                    <span className="text-4xl block">🏆</span>
+                    <h3 className="text-xl font-bold text-white uppercase tracking-wider">No Active Playoff Bracket</h3>
+                    <button
+                      onClick={handleDrawBracketsClick}
+                      disabled={isLocked}
+                      className="bg-cfc-red hover:bg-cfc-redHover text-white font-bold px-5 py-2.5 rounded text-xs uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
+                    >
+                      Draw Bracket Stage
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-8">
+                    {/* PLAYOFF BRACKET STAGE HEADER & INFORMATION */}
+                    <div className="bg-cfc-panel rounded-xl border border-cfc-border p-5 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div>
+                        <h2 className="text-2xl font-black text-white uppercase tracking-wide flex items-center gap-2">
+                          <span className="text-cfc-red">🏆</span> PLAYOFF BRACKET STAGE
+                        </h2>
+                        <p className="text-xs text-gray-400 font-mono mt-1">
+                          Format: {bracketData.type === 'single' ? 'Single Elimination' : bracketData.type === 'championship' ? 'Championship' : 'Double Elimination'} | Best of {bracketData.maxGames}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 w-full md:w-auto">
+                        {bracketData.isCompleted && (
+                          <button 
+                            onClick={() => setShowWinnerModal(true)}
+                            className="flex-1 md:flex-none bg-yellow-600 hover:bg-yellow-500 text-white font-bold px-3 py-2 rounded text-xs transition uppercase tracking-wider flex items-center justify-center gap-1"
+                          >
+                            <span>🏆</span> Standings
+                          </button>
+                        )}
+                        <button
+                          onClick={handleDrawBracketsClick}
+                          disabled={isLocked}
+                          className="flex-1 md:flex-none bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-200 font-bold px-4 py-2 rounded text-xs transition uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Reset / Redraw Brackets
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* LIVE TABLE MATCHES - BRACKET STAGE */}
+                    <div>
+                      <h2 className="text-xl font-black mb-4 text-white uppercase tracking-wide flex items-center gap-2">
+                        <span className="text-cfc-red">●</span> LIVE TABLE MATCHES
+                      </h2>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {Array.from({ length: tableCount }).map((_, idx) => {
+                          const tableNum = idx + 1;
+                          const assignedItem = bracketReadyMatches[idx];
+
+                          return (
+                            <div key={tableNum} className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
+                              <div className="flex justify-between items-center border-b border-cfc-border pb-3">
+                                <span className="font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
+                                  <span className="text-cfc-red">●</span> Table #{tableNum}
+                                </span>
+                                <span className={`text-[11px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider ${assignedItem ? 'bg-cfc-red text-white animate-pulse' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}>
+                                  {assignedItem ? 'MATCH IN PROGRESS' : 'FREE'}
+                                </span>
+                              </div>
+
+                              {assignedItem ? (
+                                <MatchCard 
+                                  match={assignedItem.match}
+                                  onScoreChange={(gIdx, key, val) => handleBracketScoreChange(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, gIdx, key, val)}
+                                  onHandicapToggle={(checked) => handleBracketHandicapToggle(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, checked)}
+                                  onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, winner)}
+                                  onConfirm={() => confirmBracketMatch(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx)}
+                                  locked={isLocked}
+                                />
+                              ) : (
+                                <p className="text-gray-500 text-xs italic py-8 text-center uppercase tracking-wider">
+                                  Table available for playoff match
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* BRACKET VIEW VISUALIZATION */}
+                    <div className="bg-cfc-panel rounded-xl border border-cfc-border p-6 overflow-x-auto space-y-8 shadow-lg">
+                      <div className="border-b border-cfc-border pb-4">
+                        <h2 className="text-2xl font-black text-white uppercase tracking-wide flex items-center gap-2">
+                          <span className="text-cfc-red">🏆</span> BRACKET VIEW
+                        </h2>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h3 className="text-base font-black text-white uppercase tracking-wider border-b border-cfc-border pb-1">Winners Bracket</h3>
+                        <div className="flex gap-8 items-stretch min-w-max pt-2">
+                          {(bracketData.type === 'championship' ? bracketData.winnersRounds.slice(0, -1) : bracketData.winnersRounds).map((roundMatches, rIdx) => (
+                            <div key={rIdx} className="flex flex-col justify-around gap-6 w-72">
+                              <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center border-b border-cfc-border pb-1">
+                                Round {rIdx + 1}
+                              </h4>
+
+                              {roundMatches.map((match, mIdx) => (
+                                <MatchCard 
+                                  key={match.id} 
+                                  match={match} 
+                                  onScoreChange={(gIdx, key, val) => handleBracketScoreChange('winners', rIdx, mIdx, gIdx, key, val)}
+                                  onHandicapToggle={(checked) => handleBracketHandicapToggle('winners', rIdx, mIdx, checked)}
+                                  onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('winners', rIdx, mIdx, winner)}
+                                  onConfirm={() => confirmBracketMatch('winners', rIdx, mIdx)}
+                                  locked={isLocked}
+                                />
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {bracketData.type === 'single' && (
+                        <div className="space-y-6 pt-6 border-t border-cfc-border">
+                          {bracketData.grandFinals && (
+                            <div className="space-y-3">
+                              <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
+                              <div className="flex gap-6 items-start pt-2">
+                                <div className="w-80">
+                                  <MatchCard 
+                                    match={bracketData.grandFinals[0]} 
+                                    onScoreChange={(gIdx, key, val) => handleBracketScoreChange('grandFinals', 0, 0, gIdx, key, val)}
+                                    onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, 0, checked)}
+                                    onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('grandFinals', 0, 0, winner)}
+                                    onConfirm={() => confirmBracketMatch('grandFinals', 0, 0)}
+                                    locked={isLocked}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {bracketData.thirdPlaceMatch && (
+                            <div className="space-y-3">
+                              <h3 className="text-base font-black text-amber-400 uppercase tracking-wider border-b border-cfc-border pb-1">3rd Place Match</h3>
+                              <div className="flex gap-6 items-start pt-2">
+                                <div className="w-80">
+                                  <MatchCard 
+                                    match={bracketData.thirdPlaceMatch} 
+                                    onScoreChange={(gIdx, key, val) => handleBracketScoreChange('thirdPlace', 0, 0, gIdx, key, val)}
+                                    onHandicapToggle={(checked) => handleBracketHandicapToggle('thirdPlace', 0, 0, checked)}
+                                    onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('thirdPlace', 0, 0, winner)}
+                                    onConfirm={() => confirmBracketMatch('thirdPlace', 0, 0)}
+                                    locked={isLocked}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {(bracketData.type === 'double' || bracketData.type === 'championship') && bracketData.losersRounds && bracketData.losersRounds.length > 0 && (
+                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                          <h3 className="text-base font-black text-rose-400 uppercase tracking-wider border-b border-cfc-border pb-1">Losers Bracket</h3>
+                          <div className="flex gap-8 items-stretch min-w-max pt-2">
+                            {bracketData.losersRounds.map((roundMatches, rIdx) => (
+                              <div key={rIdx} className="flex flex-col justify-around gap-6 w-72">
+                                <h4 className="text-[11px] font-bold text-gray-400 uppercase tracking-wider text-center border-b border-cfc-border pb-1">
+                                  Losers Round {rIdx + 1}
+                                </h4>
+
+                                {roundMatches.map((match, mIdx) => (
+                                  <MatchCard 
+                                    key={match.id} 
+                                    match={match} 
+                                    onScoreChange={(gIdx, key, val) => handleBracketScoreChange('losers', rIdx, mIdx, gIdx, key, val)}
+                                    onHandicapToggle={(checked) => handleBracketHandicapToggle('losers', rIdx, mIdx, checked)}
+                                    onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('losers', rIdx, mIdx, winner)}
+                                    onConfirm={() => confirmBracketMatch('losers', rIdx, mIdx)}
+                                    locked={isLocked}
+                                  />
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {bracketData.type === 'double' && bracketData.grandFinals && (
+                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                          <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
+                          <div className="flex gap-6 items-start pt-2">
+                            {bracketData.grandFinals.map((gfMatch, gfIdx) => (
+                              <div key={gfMatch.id} className="w-80">
+                                <MatchCard
+                                  match={gfMatch}
+                                  onScoreChange={(gIdx, key, val) => handleBracketScoreChange('grandFinals', 0, gfIdx, gIdx, key, val)}
+                                  onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, gfIdx, checked)}
+                                  onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('grandFinals', 0, gfIdx, winner)}
+                                  onConfirm={() => confirmBracketMatch('grandFinals', 0, gfIdx)}
+                                  locked={isLocked}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {bracketData.type === 'championship' && (
+                        <div className="space-y-3 pt-6 border-t border-cfc-border">
+                          <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
+                          <p className="text-[11px] text-gray-500 italic">
+                            Championship Format: this is the Winners Bracket final - its winner takes 1st, runner-up takes 2nd.
+                          </p>
+                          <div className="flex gap-6 items-start pt-2">
+                            <div className="w-80">
+                              <MatchCard
+                                match={bracketData.winnersRounds[bracketData.winnersRounds.length - 1][0]}
+                                onScoreChange={(gIdx, key, val) => handleBracketScoreChange('winners', bracketData.winnersRounds.length - 1, 0, gIdx, key, val)}
+                                onHandicapToggle={(checked) => handleBracketHandicapToggle('winners', bracketData.winnersRounds.length - 1, 0, checked)}
+                                onOverrideWinnerChange={(winner) => handleBracketOverrideWinnerChange('winners', bracketData.winnersRounds.length - 1, 0, winner)}
+                                onConfirm={() => confirmBracketMatch('winners', bracketData.winnersRounds.length - 1, 0)}
+                                locked={isLocked}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+          </main>
+
+          {/* Footer */}
+          <footer className="bg-cfc-panel border-t border-cfc-border py-4 text-center text-xs text-gray-400 font-mono">
+            <p>Tournament Manager <span className="text-cfc-red font-bold ml-1">v1.4.27</span></p>
+            <p>Calgary Foosball Club is a registered non-profit </p>
+          </footer>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<FoosballApp />);
+  </script>
+</body>
+</html>
