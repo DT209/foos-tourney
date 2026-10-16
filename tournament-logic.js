@@ -305,7 +305,9 @@ globalThis.TournamentLogic = (() => {
     return records;
   }
 
-  // Saved tournaments for the "Saved Tournaments" list, most recently saved first.
+  // Saved tournaments for the "Saved Tournaments" list, newest start first (ties
+  // by id). Start time never changes, so the order stays put when a tournament
+  // is opened (opening re-saves it, so sorting by save time reshuffled rows).
   function listTournaments(storage) {
     try {
       return readTournamentRecords(storage)
@@ -318,7 +320,7 @@ globalThis.TournamentLogic = (() => {
           matchCount: state.matches.length,
           bracketType: state.bracketData ? state.bracketData.type : null
         }))
-        .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+        .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id));
     } catch {
       return [];
     }

@@ -179,7 +179,7 @@ flowchart TD
     WR --> K1
     PT --> K2
     RR["readTournamentRecords: skips corrupt records"] --> K1
-    LT["listTournaments"] --> RR
+    LT["listTournaments: newest start first, ties by id"] --> RR
     RP["recentTournamentPlayers"] --> RR
     DT["deleteTournament"] --> K1
     DT -->|"if current"| K2

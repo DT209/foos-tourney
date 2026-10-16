@@ -271,7 +271,34 @@ describe('loadCurrentTournament', () => {
 });
 
 describe('listTournaments', () => {
-  it('summarizes saved tournaments, most recently saved first, skipping other and corrupt keys', () => {
+  it('orders by start time, newest first, not by save time, so opening one never reorders the list', () => {
+    const storage = memoryStorage();
+    const started = day => new Date(2026, 9, day, 19).toISOString();
+    L.saveTournament(storage, sampleState({ tournamentId: 'w1', tournamentName: 'Week 1', startedAt: started(1) }));
+    L.saveTournament(storage, sampleState({ tournamentId: 'w3', tournamentName: 'Week 3', startedAt: started(15) }));
+    L.saveTournament(storage, sampleState({ tournamentId: 'w2', tournamentName: 'Week 2', startedAt: started(8) }));
+    const names = () => L.listTournaments(storage).map(t => t.name);
+    assert.deepEqual(names(), ['Week 3', 'Week 2', 'Week 1']);
+    // Re-saving (what opening a tournament does) must not move it.
+    L.saveTournament(
+      storage,
+      sampleState({ tournamentId: 'w1', tournamentName: 'Week 1', startedAt: started(1) }),
+      new Date(2030, 0, 1)
+    );
+    assert.deepEqual(names(), ['Week 3', 'Week 2', 'Week 1']);
+  });
+
+  it('breaks start-time ties by id, so the order is always stable', () => {
+    const storage = memoryStorage();
+    const same = new Date(2026, 9, 1, 19).toISOString();
+    for (const id of ['b', 'c', 'a']) L.saveTournament(storage, sampleState({ tournamentId: id, startedAt: same }));
+    assert.deepEqual(
+      L.listTournaments(storage).map(t => t.id),
+      ['a', 'b', 'c']
+    );
+  });
+
+  it('summarizes saved tournaments, skipping other and corrupt keys', () => {
     const storage = memoryStorage({ unrelated: 'x', [recordKey('broken')]: '{nope' });
     L.saveTournament(storage, sampleState(), new Date('2026-10-17T02:00:00Z'));
     L.saveTournament(

@@ -147,7 +147,8 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
   leaderboard, such as guests, appear in a "Recent players" section of **Add from Leaderboard** and in
   name suggestions. Typing one adds them directly, without the guest prompt.
 - **New Tournament** starts a fresh event and keeps the previous one. **Saved Tournaments** lists past
-  events to reopen or delete. The current tournament can't be deleted.
+  events to reopen or delete. The current tournament can't be deleted. The list is ordered by start time, newest first,
+  and opening a tournament doesn't change the order.
 - CSV match IDs are prefixed with the tournament UUID, so exports never collide across events.
 
 ## Exporting and importing tournaments
