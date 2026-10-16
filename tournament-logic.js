@@ -159,39 +159,42 @@ globalThis.TournamentLogic = (() => {
   // testing this file locally via file://, which can't reach the site).
   // When hosted at calgaryfoosballclub.com/dyp/, the live fetch is
   // same-origin as calgaryfoosballclub.com/leaderboard/ and always wins.
-  // Last refreshed from the live page: 2026-08-19.
+  // Refresh with `npm run refresh-leaderboard`.
+  // Last refreshed from the live page: 2026-10-16.
+  const FALLBACK_LEADERBOARD_DATE = '2026-10-16';
   const FALLBACK_LEADERBOARD_PLAYERS = [
-    { name: 'Andrew', singlesElo: null, doublesElo: 1026 },
-    { name: 'Brian L', singlesElo: null, doublesElo: 1255 },
-    { name: 'Castillo', singlesElo: null, doublesElo: 1109 },
-    { name: 'Chris D', singlesElo: null, doublesElo: 906 },
-    { name: 'Darrel', singlesElo: null, doublesElo: 924 },
-    { name: 'David', singlesElo: null, doublesElo: 901 },
-    { name: 'Doogle', singlesElo: null, doublesElo: 913 },
+    { name: 'Andrew', singlesElo: null, doublesElo: 1058 },
+    { name: 'Brian L', singlesElo: null, doublesElo: 1277 },
+    { name: 'Castillo', singlesElo: null, doublesElo: 1125 },
+    { name: 'Darrel', singlesElo: null, doublesElo: 928 },
+    { name: 'David', singlesElo: null, doublesElo: 912 },
+    { name: 'Doogle', singlesElo: null, doublesElo: 911 },
     { name: 'Emett', singlesElo: null, doublesElo: null },
-    { name: 'Fred', singlesElo: null, doublesElo: 1082 },
-    { name: 'Ivor', singlesElo: null, doublesElo: 1182 },
-    { name: 'J.Herman', singlesElo: null, doublesElo: 1192 },
-    { name: 'Jackie', singlesElo: null, doublesElo: 981 },
-    { name: 'Jay', singlesElo: null, doublesElo: 748 },
-    { name: 'Joe', singlesElo: null, doublesElo: 964 },
-    { name: 'John D', singlesElo: null, doublesElo: null },
+    { name: 'Eric Goodman', singlesElo: null, doublesElo: null },
+    { name: 'Fred', singlesElo: null, doublesElo: 1056 },
+    { name: 'Ivor', singlesElo: null, doublesElo: 1184 },
+    { name: 'J.Herman', singlesElo: null, doublesElo: 1254 },
+    { name: 'Jackie', singlesElo: null, doublesElo: 984 },
+    { name: 'Jay', singlesElo: null, doublesElo: 754 },
+    { name: 'Joe', singlesElo: null, doublesElo: 969 },
     { name: 'Kai', singlesElo: null, doublesElo: null },
-    { name: 'Kent', singlesElo: null, doublesElo: 1057 },
-    { name: 'Linda', singlesElo: null, doublesElo: 1097 },
-    { name: 'Mark', singlesElo: null, doublesElo: 946 },
-    { name: 'Matt', singlesElo: null, doublesElo: 1216 },
-    { name: 'Mike Leach', singlesElo: null, doublesElo: 994 },
-    { name: 'Mike Locken', singlesElo: null, doublesElo: 1122 },
+    { name: 'Kent', singlesElo: null, doublesElo: 1032 },
+    { name: 'Linda', singlesElo: null, doublesElo: 1163 },
+    { name: 'Mark', singlesElo: null, doublesElo: 941 },
+    { name: 'Matt', singlesElo: null, doublesElo: 1202 },
+    { name: 'Mike Leach', singlesElo: null, doublesElo: 956 },
+    { name: 'Mike Locken', singlesElo: null, doublesElo: 1067 },
     { name: 'Mike Ward', singlesElo: null, doublesElo: null },
     { name: 'Mo', singlesElo: null, doublesElo: null },
     { name: 'Patrick', singlesElo: null, doublesElo: 917 },
     { name: 'Rob', singlesElo: null, doublesElo: null },
-    { name: 'Shane', singlesElo: null, doublesElo: 1059 },
-    { name: 'Shawn', singlesElo: null, doublesElo: 752 },
+    { name: 'Shane', singlesElo: null, doublesElo: 1060 },
+    { name: 'Shawn', singlesElo: null, doublesElo: 755 },
+    { name: 'Taco', singlesElo: null, doublesElo: 889 },
     { name: 'Tammy', singlesElo: null, doublesElo: null },
-    { name: 'Tony', singlesElo: null, doublesElo: 1166 },
-    { name: 'Zack', singlesElo: null, doublesElo: 902 }
+    { name: 'Taquito', singlesElo: null, doublesElo: null },
+    { name: 'Tony', singlesElo: null, doublesElo: 1138 },
+    { name: 'Zack', singlesElo: null, doublesElo: 870 }
   ];
 
   const LEADERBOARD_URL = 'https://calgaryfoosballclub.com/leaderboard/';
@@ -1626,6 +1629,7 @@ globalThis.TournamentLogic = (() => {
     getBrowserStorage,
     // leaderboard
     FALLBACK_LEADERBOARD_PLAYERS,
+    FALLBACK_LEADERBOARD_DATE,
     LEADERBOARD_URL,
     findLeaderboardPlayer,
     getLeaderboardInfo,

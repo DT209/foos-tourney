@@ -11,8 +11,9 @@
     "format:check": "prettier --check .",
     "validate:html": "html-validate TournamentManager.html",
     "test": "node --test test/",
-    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --reporter text --reporter html node --test test/",
-    "audit": "npm audit --audit-level=high"
+    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --include scripts/leaderboard-snapshot.js --reporter text --reporter html node --test test/",
+    "audit": "npm audit --audit-level=high",
+    "refresh-leaderboard": "node scripts/refresh-leaderboard.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

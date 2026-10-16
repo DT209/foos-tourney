@@ -37,13 +37,21 @@ Calgary Foosball Club tournament manager. See `README.md` for layout, deploy and
 - The UI has no automated tests. After wiring changes, load the page in a browser (serve the folder
   over HTTP) and click through a roster, a Monster match and a bracket to completion.
 
-## Known issues
+## Persistence
 
-- Single elimination with exactly 2 teams throws (`it.todo` in `test/bracket-setup.test.js`).
-- State lives only in React memory. A refresh loses the tournament.
-- The live leaderboard fetch only works same-origin on calgaryfoosballclub.com. Elsewhere it
-  falls back to `FALLBACK_LEADERBOARD_PLAYERS`.
-- The admin PIN is hardcoded client-side and only guards against accidental edits.
+- `saveTournament`/`loadTournament` persist the fields listed in `defaultTournamentState`. When adding
+  persisted state: add the field and its default there, add a validator to `FIELD_VALIDATORS` if its
+  type differs from the default's, `useState(restored.x)` in the component, and add it to the auto-save
+  effect's object and dependency list.
+- Bump `STORAGE_VERSION` only for incompatible shape changes. Old saves then load as defaults.
+- Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams
+  by `id`, never by reference.
+
+## Known limitations
+
+- The live leaderboard only loads when served from calgaryfoosballclub.com (CORS). Elsewhere the page
+  uses the snapshot, which `npm run refresh-leaderboard` updates.
+- The admin PIN is stored in the browser and only guards against accidental edits.
 
 ## Git
 

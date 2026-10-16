@@ -48,8 +48,24 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 
 The JavaScript is never transpiled, bundled or minified.
 
-## Known issues
+## Persistence and admin lock
 
-- Single elimination with exactly 2 teams throws during bracket generation
-  (recorded as a `todo` test).
-- Tournament state is in memory only. A page refresh loses it.
+- The tournament auto-saves to this browser's `localStorage` after every change and restores on
+  load. Use **Full Reset** to start the next event. Private browsing or blocked site data disables
+  auto-save, and the footer says so.
+- The first **Admin Lock** asks for a 4-8 digit PIN. The lock prevents accidental edits on a shared
+  screen. It isn't security: **Forgot PIN?** unlocks after a confirm.
+
+## Club leaderboard
+
+The page fetches `calgaryfoosballclub.com/leaderboard/` live. Browsers only allow that when the page
+is served from the same site (CORS), so hosting anywhere else, or opening the file locally, uses the
+bundled snapshot. The UI shows the snapshot's date. To update it:
+
+```sh
+npm run refresh-leaderboard   # fetches from Node (no CORS), rewrites the snapshot
+git diff tournament-logic.js  # review, then npm run build
+```
+
+To get live data on another host, the club site must send an `Access-Control-Allow-Origin` header for
+that host on `/leaderboard/`.

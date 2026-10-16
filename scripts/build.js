@@ -76,6 +76,8 @@ const steps = [
       '--100',
       '--include',
       'tournament-logic.js',
+      '--include',
+      'scripts/leaderboard-snapshot.js',
       '--reporter',
       'text',
       '--reporter',

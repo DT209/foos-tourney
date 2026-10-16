@@ -61,7 +61,7 @@
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
       sanitizeInput, submitPin, forgetPin, getLeaderboardInfo,
-      restoreTournamentState, saveTournament, loadTournament, getBrowserStorage, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS,
+      restoreTournamentState, saveTournament, loadTournament, getBrowserStorage, fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
       checkNewPlayerName, addPlayer, addPlayersByName, togglePlayerFlag, renamePlayer, removePlayer,
       countActivePlayers, hasPausedPlayers, computeStandings,
       togglePickerSelection, getLeaderboardPickerView, toggleSelectAll, getPlayerSuggestions,
@@ -768,7 +768,7 @@
                       <h3 className="text-lg font-black text-white uppercase tracking-wide">Add from Leaderboard</h3>
                       <p className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${leaderboardStatus === 'live' ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
-                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : 'Club leaderboard: cached snapshot (offline)'}
+                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : `Club leaderboard: offline snapshot from ${FALLBACK_LEADERBOARD_DATE}`}
                       </p>
                     </div>
 
@@ -1244,7 +1244,7 @@
                     <div className="flex justify-between items-center gap-2">
                       <p className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${leaderboardStatus === 'live' ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
-                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : 'Club leaderboard: cached snapshot (offline)'}
+                        {leaderboardStatus === 'live' ? 'Club leaderboard: live' : `Club leaderboard: offline snapshot from ${FALLBACK_LEADERBOARD_DATE}`}
                       </p>
                       <button
                         onClick={openLeaderboardPicker}
