@@ -1,6 +1,15 @@
 # Firebase publishing plan
 
-Status: proposal, not built. The import dialog already lists **From Firebase** as "coming soon".
+Status: phases 1 to 3 built and tested, off until phase 0. `firebase-config.js` holds `null` until the
+club creates the Firebase project; the README's Publishing section lists the steps.
+
+Changes from the proposal, found while building:
+
+- `export` is the Export JSON **text**, not a map: Firestore can't store the bracket's nested arrays.
+  The rules check the text carries `"adminPin": null`.
+- Take-over picks the tournament from the published list (or reads it from the code file), since a
+  typed code alone doesn't say which tournament it belongs to.
+- With publishing off, Display Mode skips the list and opens this device's board, as before.
 
 ## Goal
 

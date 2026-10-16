@@ -18,12 +18,15 @@ when the module's flow changes.
   Don't convert it to ES modules or CommonJS: the page loads it with a plain `<script>` and has no build step.
 - When you add an export, also add it to the destructuring list at the top of the Babel block in
   the HTML. The build's module-contract step fails if the page imports a name that isn't exported.
+- `firebase-remote.js` is the only code that talks to Firebase. Keep it thin: decisions and write plans
+  belong in `tournament-logic.js` (the Publishing section), and the adapter just runs them. Change
+  `firestore.rules` and its tests together: the rules are the only server-side protection.
 
 ## Hard constraints
 
 - **Never transpile, bundle or minify.** `dist/` must be byte-identical to the source files.
-- Keep 100% statement, branch, function and line coverage on `tournament-logic.js`. Cover new
-  branches with tests. Don't add `c8 ignore` comments.
+- Keep 100% statement, branch, function and line coverage on `tournament-logic.js` (unit tests) and
+  `firebase-remote.js` (emulator tests). Cover new branches with tests. Don't add `c8 ignore` comments.
 - `npm run build` must pass before committing: ESLint with zero warnings (including the inline JSX),
   Prettier, html-validate, the module contract, coverage, and `npm audit`.
 - Prettier formats JS, JSON and Markdown. The HTML is excluded on purpose, so don't reformat it wholesale.
@@ -47,6 +50,11 @@ when the module's flow changes.
   only when keystroke behaviour is what's under test.
 - The page renders in `React.StrictMode`, so effects mount, clean up and mount again in development.
   Effects must be safe to run twice.
+- Publishing UI tests use `openApp({ remote: true })`, which installs `test-e2e/fake-remote.js` as
+  `window.foosRemoteForTests`. Assert on `app.remoteCalls()` to check exactly what was sent and when.
+- `test-firebase/` runs on the Firestore and Auth emulators (`npm run test:firebase`, Java 21+).
+  `rules.fb.js` covers every allowed and denied rule case. `remote.fb.js` drives the adapter with the npm
+  compat SDK. Use `--skip-firebase` where Java isn't available.
 
 ## Tournaments and persistence
 
@@ -73,6 +81,10 @@ when the module's flow changes.
   relative units (`em`, `vw`/`vh`); px appears only as the font-size floor and ceiling in `clamp()`.
   Keep them relative. Area sizes are fractions in `displayLayout` (`foosTourney.displayLayout`, a browser
   preference, not tournament data), applied through CSS variables on the grid.
+- Publishing state is `foosTourney.publishing` (`{ tournamentId, slot, code }`, one per browser), never part of
+  a tournament or its export. The published copy is the Export JSON text from `publishedExport`, with the PIN
+  and lock blanked. Firestore can't store the bracket's nested arrays, so it is a string, not a map. Only
+  `watchedSections` changes trigger a write.
 - Downloads go through `downloadText`, which percent-encodes the whole payload. `encodeURI` leaves `#`,
   which truncates `data:` URLs.
 - Saved state is JSON, so object identity isn't preserved across a reload. Compare players and teams
@@ -93,9 +105,10 @@ there. When you fix one, add a regression test and close the issue in the commit
   Elsewhere the page uses the bundled snapshot and shows its date. `npm run refresh-leaderboard`
   updates it. Live data on another host needs the club site to send `Access-Control-Allow-Origin`
   for that host on `/leaderboard/`.
-- Importing from Firebase is a placeholder: the import dialog lists it, disabled, as "coming soon".
-  The agreed design is in `docs/firebase-plan.md`.
-  Reading a tournament from remote storage in read-only mode is also not built yet. Today a file
-  plays that role.
+- Publishing to Firebase is built but off: `firebase-config.js` holds `null` until the club creates the
+  project (phase 0 in `docs/firebase-plan.md`). With it off, the page makes no Firebase requests, Display
+  Mode skips the tournament list, and **From Firebase** is disabled. Published data is readable by anyone.
+- Publishing has no CAPTCHA or App Check, so a script minting anonymous ids could hold slots. See the
+  plan's risks.
 - UI tests need Chrome and network access (React, Babel and Tailwind load from CDNs). Use
   `npm run build -- --skip-e2e` where either is missing.

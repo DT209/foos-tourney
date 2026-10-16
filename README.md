@@ -38,6 +38,10 @@ mindmap
       Panels scroll by themselves
       Second screen window that follows live play
       Resizable areas, remembered per browser
+    Publishing, off until Firebase is set up
+      New Tournament publishes live for any device
+      Display Mode list and viewer links
+      Publisher code to take over
     Admin Lock
       PIN guards against accidental edits
 ```
@@ -92,18 +96,24 @@ build constraints, testing approach, known limitations) are in
 | ------------------------ | ----------------------------------------------------------------------- |
 | `TournamentManager.html` | The page: React UI, compiled in the browser by Babel. No build step.    |
 | `tournament-logic.js`    | All tournament behaviour as plain functions (`window.TournamentLogic`). |
+| `firebase-remote.js`     | Thin Firestore adapter for publishing (`window.FirebaseRemote`).        |
+| `firebase-config.js`     | The Firebase web config. `null` (the default) turns publishing off.     |
+| `firestore.rules`        | Firestore security rules: the only server-side protection.              |
+| `firebase.json`          | Rules file and emulator ports for `firebase-tools`.                     |
 | `test/`                  | `node:test` unit tests for every function in `tournament-logic.js`.     |
 | `test-e2e/`              | UI tests: drive the real page in headless Chrome.                       |
+| `test-firebase/`         | Rules and adapter tests against the Firestore and Auth emulators.       |
 | `scripts/build.js`       | Quality gates, then copies the app to `dist/` unchanged.                |
 
-Deploy by serving `TournamentManager.html` and `tournament-logic.js` from the
-same directory (e.g. `calgaryfoosballclub.com/dyp/`). The live leaderboard
+Deploy by serving `TournamentManager.html`, `tournament-logic.js`, `firebase-config.js` and
+`firebase-remote.js` from the same directory (e.g. `calgaryfoosballclub.com/dyp/`). The live leaderboard
 fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
 
 ## Development
 
-Requires Node 20+.
+Requires Node 20+. The Firestore step also needs Java 21+ (for the emulator); `firebase-tools` runs
+through `npx` at a pinned version, so it isn't a dependency.
 
 ```sh
 npm install
@@ -111,6 +121,7 @@ npm test            # unit tests
 npm run test:e2e    # UI tests in headless Chrome (needs Chrome + network for the CDN scripts)
 npm run coverage:ui # after test:e2e: which UI functions never ran
 npm run coverage    # unit tests + 100% coverage gate (HTML report in coverage/)
+npm run test:firebase # rules + adapter tests on the emulators, 100% adapter coverage (needs Java)
 npm run check       # every quality gate, no dist/
 npm run build       # every quality gate, then dist/
 npm run format      # apply Prettier to JS/JSON/Markdown
@@ -126,8 +137,10 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 6. UI tests in headless Chrome, covering every control at desktop, tablet and phone widths
 7. UI coverage: every function in the page's UI script (components, handlers, inline callbacks)
    must run in at least one UI test
-8. `npm audit` at high severity (`--skip-audit` when offline)
-9. Copy `TournamentManager.html` and `tournament-logic.js` to `dist/` byte-for-byte, with a SHA-256 `manifest.json`
+8. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
+   (`--skip-firebase` where Java isn't available)
+9. `npm audit` at high severity (`--skip-audit` when offline)
+10. Copy the four app files to `dist/` byte-for-byte, with a SHA-256 `manifest.json`
 
 The JavaScript is never transpiled, bundled or minified.
 
@@ -167,8 +180,8 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
     returns to your own tournament.
 - Imported files are validated field by field like saved data. Other JSON files and exports from a
   newer version are rejected with a message.
-- **From Firebase** is listed as an import source but not built yet. See the
-  [Firebase publishing plan](docs/firebase-plan.md).
+- **From Firebase** lists the tournaments published from other devices and hands the chosen one to the
+  same review. It is disabled until publishing is set up (see [Publishing](#publishing-firebase)).
 - Private browsing or blocked site data disables auto-save, and the footer says so.
 - Saves from before tournaments had ids are migrated automatically on first load.
 
@@ -184,7 +197,8 @@ flowchart TD
     SV --> IM["Import…"]
     IM --> SRC{"Source"}
     SRC -- "From a file" --> REV["Review contents"]
-    SRC -- "From Firebase" --> FB["Not built yet"]
+    SRC -- "From Firebase" --> FB["Pick a published tournament"]
+    FB --> REV
     REV --> ADD["Add to Saved Tournaments"]
     REV --> EX{"Already saved?"}
     EX -- Yes --> RP["Replace Saved Copy or Keep Both"]
@@ -213,8 +227,13 @@ the layout stays proportional on any display. They're remembered in this browser
 second-screen window. Portrait phones keep the stacked layout without handles.
 
 **Open on Another Screen** opens the board in a new window (`TournamentManager.html?display=1`) that
-can be moved to a TV. It updates as you score on the control desk and never saves anything. It only
-follows tournaments on the same computer. **Exit Display** returns to the control desk.
+can be moved to a TV. It updates as you score on the control desk and never saves anything. Without
+publishing it only follows tournaments on the same computer. **Exit Display** returns to the control desk.
+
+When publishing is set up, Display Mode and second-screen windows first show a list: **This device**
+(selected, so **Show** or Enter puts it up as before) and the tournaments published from any device,
+which are followed live. **Switch tournament** returns to the list. A viewer link
+(`TournamentManager.html?remote=<id>`) opens straight to a published tournament on any phone or TV.
 
 ```mermaid
 flowchart LR
@@ -225,6 +244,44 @@ flowchart LR
     BOARD -->|"drag handles or arrow keys"| LAYOUT[("Layout preference")]
     LAYOUT --> WIN
     WIN -->|"Exit Display"| DESK2["Control desk in that window"]
+```
+
+## Publishing (Firebase)
+
+Publishing lets anyone follow a tournament live from any device, and import it, without accounts. It
+is built and tested but **off** until `firebase-config.js` holds a project's config. The design and
+its reasoning are in the [Firebase publishing plan](docs/firebase-plan.md).
+
+- **New Tournament** publishes the new tournament at once. The tournament a first visit creates on
+  its own stays local.
+- Only changes Display Mode shows (tables, leaderboard, match history) are sent, at most every 5
+  seconds. Each write carries the whole tournament, so other edits (such as paid flags) ride along.
+  The PIN and lock are never published.
+- **5 slots** in total, **one per browser**. A browser already publishing is asked **Replace** or
+  **Keep Current**. A slot frees 24 hours after its last published change. When all are in use the
+  tournament runs normally and the page says when the next slot frees.
+- **📡 Publishing** (under Saved Tournaments) shows the slot, the viewer link and the **publisher
+  code**, with **Copy** and **Save Code to File** (`*.publisher-code.txt`, git-ignored). Another
+  browser can **Take Over Publishing** with the code or the file. The old browser then shows
+  "Publishing moved to another device".
+- Everything published is readable by anyone, including names, results and paid flags.
+
+To turn it on:
+
+1. Create a Firebase project, enable Firestore and **Anonymous** sign-in, and register a web app.
+2. Paste the web app's config into `firebase-config.js` (it is meant to be public).
+3. `npx firebase-tools@15.32.1 deploy --only firestore:rules --project <project-id>`.
+
+```mermaid
+flowchart LR
+    NT["New Tournament"] --> ASK{"Already publishing?"}
+    ASK -->|"no"| PUB[("Firestore: whole tournament JSON")]
+    ASK -->|"Replace"| PUB
+    ASK -->|"Keep Current"| LOCAL["Stays local"]
+    DESK["Control desk changes"] -->|"tables, leaderboard, history; max every 5 s"| PUB
+    PUB -->|"live"| VIEW["Display Mode list or ?remote link"]
+    PUB --> IMP["Import: From Firebase"]
+    CODE["Publisher code"] -->|"Take over"| DESK2["Another browser publishes"]
 ```
 
 ## Admin lock
