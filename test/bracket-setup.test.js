@@ -333,9 +333,28 @@ describe('generateBracketStructure', () => {
     assert.equal(b.losersRounds[0][0].team1.isBye, true);
   });
 
-  // Pre-existing bug carried over from the original: with 2 teams, single
-  // elimination has zero winners rounds and Round 1 setup dereferences undefined.
-  it.todo('single elimination with 2 teams (currently throws)');
+  it('single elimination, 2 teams: no winners rounds, both teams seeded into a READY Grand Final', () => {
+    const b = L.generateBracketStructure(teams(2), 'single', 3);
+    assert.deepEqual(b.winnersRounds, []);
+    const gf = b.grandFinals[0];
+    assert.deepEqual([gf.team1.name, gf.team2.name, gf.status, gf.games.length], ['T1', 'T2', 'READY', 3]);
+    assert.equal(b.thirdPlaceMatch, null);
+  });
+
+  it('createBracket accepts 2 teams in single elimination', () => {
+    const { bracket } = L.createBracket({
+      rankedPlayers: players(4),
+      teamCount: '2',
+      format: '2v2',
+      teamFormationStrategy: 'fair',
+      seedingStrategy: 'ranking',
+      customTeams: [],
+      leaderboardPlayers: [],
+      elimType: 'single',
+      maxGames: 1
+    });
+    assert.equal(bracket.grandFinals[0].team1.name, 'P1 & P4');
+  });
 
   it('unknown elimination type builds winners rounds only', () => {
     const b = L.generateBracketStructure(teams(4), 'other', 1);

@@ -197,12 +197,41 @@ describe('confirmBracketMatch', () => {
     assert.equal(bracket.isCompleted, true);
   });
 
-  it('double elimination, 2 teams: winners final seeds Grand Final team1 only', () => {
+  it('double elimination, 2 teams: the winners final loser goes straight to the Grand Final', () => {
+    // With no losers bracket, the winners-final loser is the losers champion.
     const b = L.generateBracketStructure(teams(2), 'double', 1);
     scoreFor(b.winnersRounds[0][0], 1);
-    const r = L.confirmBracketMatch(b, 'winners', 0, 0);
-    assert.equal(r.bracket.grandFinals[0].team1.name, 'T1');
-    assert.equal(r.bracket.grandFinals[0].status, 'PENDING');
+    const gf = L.confirmBracketMatch(b, 'winners', 0, 0).bracket.grandFinals[0];
+    assert.deepEqual([gf.team1.name, gf.team2.name, gf.status], ['T1', 'T2', 'READY']);
+  });
+
+  it('double elimination, 2 teams plays to completion, with and without a reset', () => {
+    const straight = playOut(L.generateBracketStructure(teams(2), 'double', 1));
+    assert.equal(straight.finishedCount, 1);
+    assert.deepEqual(names(L.calculateBracketStandings(straight.bracket)), [
+      [1, 'T1'],
+      [2, 'T2']
+    ]);
+
+    // T2 loses the winners final, then wins both Grand Finals.
+    const comeback = playOut(L.generateBracketStructure(teams(2), 'double', 1), m =>
+      m.bracketType === 'grandFinal' ? 2 : 1
+    );
+    assert.equal(comeback.finishedCount, 1);
+    assert.equal(comeback.bracket.grandFinals.length, 2);
+    assert.deepEqual(names(L.calculateBracketStandings(comeback.bracket)), [
+      [1, 'T2'],
+      [2, 'T1']
+    ]);
+  });
+
+  it('single elimination, 2 teams: the only match is the Grand Final', () => {
+    const { bracket, finishedCount } = playOut(L.generateBracketStructure(teams(2), 'single', 1), () => 2);
+    assert.equal(finishedCount, 1);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T2'],
+      [2, 'T1']
+    ]);
   });
 
   it('championship, 4 teams: final decides 1st/2nd, losers final decides 3rd', () => {

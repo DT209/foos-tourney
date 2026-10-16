@@ -861,7 +861,14 @@ globalThis.TournamentLogic = (() => {
     // its loser out of the Losers Bracket.)
     const dropsToLosers =
       Boolean(losersRounds && losersRounds.length > 0) && !(elimType === 'championship' && winnersRounds.length === 1);
-    const round1 = winnersRounds[0];
+    // Single elimination with 2 teams has no Winners rounds: the opening
+    // match is the Grand Final itself.
+    if (winnersRounds.length === 0) {
+      grandFinals[0].team1 = seededSlots[0];
+      grandFinals[0].team2 = seededSlots[1];
+      grandFinals[0].status = 'READY';
+    }
+    const round1 = winnersRounds[0] || [];
     round1.forEach((match, i) => {
       const t1 = seededSlots[i * 2];
       const t2 = seededSlots[i * 2 + 1];
@@ -1089,6 +1096,15 @@ globalThis.TournamentLogic = (() => {
     const isChampionshipFinalRound = bracket.type === 'championship' && rIdx === bracket.winnersRounds.length - 1;
     const hasLosersBracket = bracket.type === 'double' || bracket.type === 'championship';
     if (!hasLosersBracket || !bracket.losersRounds || isChampionshipFinalRound) return;
+
+    // Double elimination with 2 teams has no Losers rounds: the Winners final
+    // loser is the Losers Bracket champion and goes straight to the Grand Final.
+    if (bracket.losersRounds.length === 0) {
+      const gf = bracket.grandFinals[0];
+      gf.team2 = losingTeam;
+      if (bothRealTeams(gf)) gf.status = 'READY';
+      return;
+    }
 
     const targetLoserRound = bracket.losersRounds[rIdx === 0 ? 0 : (rIdx - 1) * 2 + 1];
     // Anti-rematch mirroring: a Round 1 drop (rIdx === 0) can't collide - two
