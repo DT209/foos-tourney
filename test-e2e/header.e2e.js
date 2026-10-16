@@ -54,6 +54,26 @@ describe('phone menu', () => {
   });
 });
 
+describe('header on narrow phones', () => {
+  // A wide fallback font (as on Ubuntu CI and some phones) must not push the
+  // menu button off-screen: the title truncates instead.
+  for (const width of [390, 320]) {
+    it(`fits at ${width}px with a wide font, keeping the menu button on screen`, async () => {
+      app = await openApp({ viewport: { width, height: 800 } });
+      await app.page.addStyleTag({ content: '* { font-family: "DejaVu Sans", sans-serif !important; }' });
+      await app.pause(100);
+      const menuButton = await app.page.$eval('header button[aria-label="Toggle Navigation Menu"]', b =>
+        b.getBoundingClientRect().toJSON()
+      );
+      assert.ok(menuButton.right <= width, `menu button right edge ${menuButton.right}px > ${width}px`);
+      assert.ok(
+        (await app.page.evaluate(() => document.documentElement.scrollWidth)) <= width,
+        'no sideways scrolling'
+      );
+    });
+  }
+});
+
 describe('admin lock dialog', () => {
   it('Cancel closes without locking and clears the typed PIN', async () => {
     app = await openApp();

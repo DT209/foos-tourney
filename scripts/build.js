@@ -44,13 +44,17 @@ function checkModuleContract() {
   console.log(`${imported.length} imports resolve against ${exported.size} exports`);
 }
 
-function e2eFiles() {
-  const dir = path.join(ROOT, 'test-e2e');
+// Explicit file lists: Node 22+ treats --test arguments as globs and no
+// longer accepts a bare directory, while Node 20 doesn't expand globs.
+function testFiles(dir, suffix) {
   return fs
-    .readdirSync(dir)
-    .filter(f => f.endsWith('.e2e.js'))
-    .map(f => path.join('test-e2e', f));
+    .readdirSync(path.join(ROOT, dir))
+    .filter(f => f.endsWith(suffix))
+    .sort()
+    .map(f => path.join(dir, f));
 }
+
+const e2eFiles = () => testFiles('test-e2e', '.e2e.js');
 
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -94,7 +98,7 @@ const steps = [
       'html',
       'node',
       '--test',
-      'test/'
+      ...testFiles('test', '.test.js')
     )
   ],
   [

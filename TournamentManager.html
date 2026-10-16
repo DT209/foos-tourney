@@ -929,7 +929,7 @@
                 href="https://calgaryfoosballclub.com/" 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity h-8 sm:h-12 flex-shrink-0 min-w-0"
+                className="flex items-center gap-2 sm:gap-3 hover:opacity-90 transition-opacity h-8 sm:h-12 min-w-0"
               >
                 <img 
                   src="https://calgaryfoosballclub.com/assets/cfc-logo-wide.png" 
@@ -1863,7 +1863,7 @@
                         Add Player
                       </button>
                     </form>
-                    <div className="flex justify-between items-center gap-2">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
                       <p className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${leaderboardStatus === 'live' ? 'bg-emerald-500' : 'bg-gray-500'}`}></span>
                         {leaderboardStatus === 'live' ? 'Club leaderboard: live' : `Club leaderboard: offline snapshot from ${FALLBACK_LEADERBOARD_DATE}`}
