@@ -17,7 +17,7 @@ flowchart LR
         HD -->|"setState"| A
         A -->|"render"| UI["UI"]
         A -->|"auto-save effect"| LS[("localStorage")]
-        H -->|"script tags"| CFG["firebase-config.js: null = off"]
+        H -->|"script tags"| CFG["firebase-config.js: foos-tourney config, null = off"]
         H --> R["firebase-remote.js: window.FirebaseRemote"]
         A -->|"publish effect, New Tournament, take over"| R
     end
@@ -25,10 +25,18 @@ flowchart LR
     T["Node tests in test/"] -->|"require the same file"| M
     TF["test-firebase/ on the emulators"] --> R
     TF --> FS
+    TE["test-e2e/ in headless Chrome"] -->|"fake-remote.js, or publishing off"| H
+    CB["Cross-browser check"] -->|"eslint.compat.config.js, check-css-compat.js"| H
+    CB --> M
 ```
 
 The module is a classic script, not an ES module. Non-determinism (`random`, ids, `fetchImpl`,
 `doc`, `now`) is passed in as parameters, so tests control it.
+
+Code that runs in the browser must also work on plain-http LAN pages, which aren't secure contexts:
+`crypto.randomUUID` and `navigator.clipboard` are missing there. `randomUuid` falls back to
+`getRandomValues`, and `copyToClipboard` rejects so the page can say copying failed. The cross-browser
+build step flags any other secure-page-only API.
 
 ## 2. Page load
 
@@ -48,10 +56,15 @@ sequenceDiagram
         M->>S: read legacy foosTourney.tournament (v1)
         M-->>C: migrated state, or null
     end
-    C->>M: restoreTournamentState(saved, id, now)
+    C->>M: restoreTournamentState(saved, createTournamentId(), now)
     Note over M: each field kept only if isValidField, else default from newTournamentState
     M-->>C: full state
     C->>C: useState initial values from restored
+    C->>M: remoteIdFromSearch, isDisplayModeUrl (display-only window?)
+    C->>M: initialDisplaySource(remoteId, remote set up)
+    C->>M: layoutFromSearch(search) or loadDisplayLayout(storage)
+    C->>M: loadPublishing(storage)
+    M->>S: read foosTourney.displayLayout, foosTourney.publishing
     C->>M: recentTournamentPlayers(storage, tournamentId) in useMemo
     M->>S: read saved records, 3 most recently started, not the current one
     M-->>C: recent players
@@ -66,7 +79,10 @@ sequenceDiagram
 ```
 
 `migrateLegacyTournament` assigns a new UUID, turns `startDate` into a local-midnight
-`startedAt`, saves under the new key and removes the legacy key.
+`startedAt`, saves under the new key and removes the legacy key. `createTournamentId` uses `randomUuid`,
+which works on plain-http pages too. The page picks its remote once, at load:
+`window.foosRemoteForTests` if a UI test set it (a fake, or `null` for off), otherwise
+`FirebaseRemote.create` with `firebase-config.js`.
 
 ## 3. Handler pattern
 
@@ -178,8 +194,10 @@ flowchart TD
         K1["foosTourney.tournament.uuid: one record per tournament"]
         K2["foosTourney.currentTournament: pointer to the active uuid"]
         K3["foosTourney.tournament: legacy v1 slot, migrated then removed"]
+        K4["foosTourney.displayLayout: browser preference, never exported"]
+        K5["foosTourney.publishing: tournamentId, slot, publisher code; never exported"]
     end
-    AE["Auto-save effect"] -->|"skipped while readOnlyView is set"| SV["saveTournament"]
+    AE["Auto-save effect"] -->|"skipped while readOnlyView is set and in ?display or ?remote windows"| SV["saveTournament"]
     SV --> WR["writeTournamentRecord: version, savedAt, persistedFields"]
     SV --> PT["set currentTournament pointer"]
     WR --> K1
@@ -195,7 +213,8 @@ flowchart TD
     PARSE --> RV{"Import dialog"}
     RV -- "importIntoSaved(add, replace, copy)" --> ST["storeImportedTournament: writeTournamentRecord only"]
     ST --> K1
-    RV -- "viewReadOnly" --> RO["applyTournament(imported), readOnlyView = { name, previous }"]
+    FBI["Import From Firebase: remote.fetchTournament, parsePublishedTournament"] --> RV
+    RV -- "viewReadOnly" --> RO["applyTournament(imported), readOnlyView = { name, source, previous }"]
     RO -->|"closeReadOnlyView"| PR["applyTournament(previous)"]
 ```
 
@@ -229,10 +248,15 @@ so the roster never holds two players with the same name (case-insensitive).
 
 ```mermaid
 flowchart TD
-    BTN["Display Mode button: setDisplayMode(true)"] --> RENDER
-    URL["Page opened with ?display: isDisplayModeUrl"] --> DW["isDisplayWindow: auto-save skipped"]
-    DW --> RENDER["FoosballApp returns DisplayBoard early"]
-    RENDER --> BB["buildDisplayBoard(matches, assignBracketTables result, tableCount, players, completed matches)"]
+    BTN["Display Mode button: openDisplayMode"] --> SRC
+    URL["Page opened with ?display or ?remote=id"] --> DW["isDisplayWindow: auto-save and publishing skipped"]
+    DW --> SRC{"displaySource: initialDisplaySource"}
+    SRC -->|"null: publishing set up"| PK["DisplayPicker: displayChoices, This device first"]
+    PK -->|"Show"| SRC
+    SRC -->|"remote"| SUB["remote.subscribe: parsePublishedTournament, or DisplayMessage when gone"]
+    SRC -->|"local"| RENDER["FoosballApp returns DisplayBoard early"]
+    SUB --> RENDER
+    RENDER --> BB["boardForTournament(state): buildDisplayBoard with assignBracketTables and completed matches"]
     BB --> T["tables: live Monster match first, else bracket assignment, else Free"]
     BB --> S["standings: computeStandings ranks"]
     BB --> H["history: getCompletedMatchesList, newest first, formatHistoryRow"]
@@ -262,7 +286,8 @@ height per tick, so speed scales with the screen. Content that fits never moves,
 
 Display Mode first asks `initialDisplaySource(remoteId, remoteEnabled)`: a `?remote=<id>` link follows that
 tournament, publishing switched on shows `DisplayPicker` (choices from `displayChoices`, this device first),
-and otherwise it goes straight to this device as before. Every board is `boardForTournament(state)`.
+and otherwise it goes straight to this device. **Switch tournament** sets the source back to `null`.
+Every board is `boardForTournament(state)`, whether the state is local or read from Firebase.
 
 ## 9. Publishing (Firebase)
 
@@ -292,18 +317,18 @@ replace the adapter with `test-e2e/fake-remote.js`, which records every call.
 
 ## Module sections and main functions
 
-| Section in `tournament-logic.js` | Main functions                                                                                                                                                                                                                                                                                       |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                                                                                                                                                                           |
-| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                                                                                                                                             |
-| Tournaments and persistence      | `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament`                                                                                                                     |
-| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                                                                                                                                                 |
-| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`, `splitFromPointer`, `nudgeSplit`, `loadDisplayLayout`, `saveDisplayLayout`, `isTournamentStorageKey`                                                            |
-| Publishing (Firebase)            | `watchedSections`, `publishThrottle`, `publishedDocument`, `publishDecision`, `nextFreeSlot`, `claimWrites`, `replaceWrites`, `publishWrites`, `takeOverWrites`, `displayChoices`, `generatePublisherCode`, `parsePublisherCodeFile`, `boardForTournament`, `publishStartOutcome`, `takeOverOutcome` |
-| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                                                                                                                                      |
-| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                                                                                                                                        |
-| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                                                                                                                                         |
-| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                                                                                                                                        |
-| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                                                                                                                                            |
-| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`                                                                                                                                                      |
-| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                                                                                                                                                                              |
+| Section in `tournament-logic.js` | Main functions                                                                                                                                                                                                                                                                                                                                                              |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Security and sanitization        | `sanitizeInput`, `sanitizeTypedText`, `sanitizeInt`, `normalizeScoreInput`                                                                                                                                                                                                                                                                                                  |
+| Admin lock                       | `submitPin`, `forgetPin`                                                                                                                                                                                                                                                                                                                                                    |
+| Tournaments and persistence      | `createTournamentId`, `randomUuid`, `newTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament`                                                                                                                                                        |
+| Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                                                                                                                                                                                                                        |
+| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`, `splitFromPointer`, `nudgeSplit`, `nextArrangement`, `splitDirections`, `loadDisplayLayout`, `saveDisplayLayout`, `layoutParam`, `layoutFromSearch`, `isDisplayLayoutKey`, `isTournamentStorageKey`                                    |
+| Publishing (Firebase)            | `watchedSections`, `publishThrottle`, `publishedDocument`, `publishDecision`, `nextFreeSlot`, `claimWrites`, `replaceWrites`, `publishWrites`, `takeOverWrites`, `displayChoices`, `initialDisplaySource`, `generatePublisherCode`, `parsePublisherCodeFile`, `copyToClipboard`, `boardForTournament`, `publishStartOutcome`, `takeOverOutcome`, `parsePublishedTournament` |
+| Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                                                                                                                                                                                                             |
+| Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                                                                                                                                                                                                               |
+| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                                                                                                                                                                                                                |
+| Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                                                                                                                                                                                                               |
+| Bracket generation               | `createBracket`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                                                                                                                                                                                                                   |
+| Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`                                                                                                                                                                                                                             |
+| History and CSV                  | `getCompletedMatchesList`, `formatHistoryRow`, `buildCsv`, `csvFileName`, `downloadText`, `downloadCsv`                                                                                                                                                                                                                                                                     |

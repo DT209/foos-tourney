@@ -28,7 +28,8 @@ when the module's flow changes.
 - Keep 100% statement, branch, function and line coverage on `tournament-logic.js` (unit tests) and
   `firebase-remote.js` (emulator tests). Cover new branches with tests. Don't add `c8 ignore` comments.
 - `npm run build` must pass before committing: ESLint with zero warnings (including the inline JSX),
-  Prettier, html-validate, the module contract, coverage, and `npm audit`.
+  Prettier, html-validate, the module contract, the cross-browser check, unit and UI coverage, the
+  Firestore rules and adapter tests, and `npm audit`.
 - The build's cross-browser check fails on APIs or CSS the `browserslist` targets don't support, and on
   secure-context-only APIs (`crypto.randomUUID`, `navigator.clipboard`, ...), which are missing on
   plain-http LAN pages. Fix the code. If a use is guarded with a fallback, mark it with
@@ -55,11 +56,18 @@ when the module's flow changes.
   only when keystroke behaviour is what's under test.
 - The page renders in `React.StrictMode`, so effects mount, clean up and mount again in development.
   Effects must be safe to run twice.
-- Publishing UI tests use `openApp({ remote: true })`, which installs `test-e2e/fake-remote.js` as
-  `window.foosRemoteForTests`. Assert on `app.remoteCalls()` to check exactly what was sent and when.
+- UI tests never reach the real Firebase project: the harness sets `window.foosRemoteForTests = null`
+  (publishing off) unless a test uses `openApp({ remote: true })`, which installs `test-e2e/fake-remote.js`
+  instead. Assert on `app.remoteCalls()` to check exactly what was sent and when.
+- Resize handles are tested with Chrome's real mouse (`page.mouse`), since synthetic pointer events
+  hid problems before. The no-mouse rule above is about inputs only.
+- To test plain-http LAN behaviour, remove secure-page APIs before load with `beforeLoad` (see
+  `test-e2e/insecure-page.e2e.js`). The test server is 127.0.0.1, which browsers treat as secure.
 - `test-firebase/` runs on the Firestore and Auth emulators (`npm run test:firebase`, Java 21+).
   `rules.fb.js` covers every allowed and denied rule case. `remote.fb.js` drives the adapter with the npm
-  compat SDK. Use `--skip-firebase` where Java isn't available.
+  compat SDK. Use `--skip-firebase` where Java isn't available. The emulators use ports 8181 and 9199
+  (`firebase.json`), so a local server on 8080 doesn't block them; tests read the addresses
+  `emulators:exec` publishes.
 
 ## Tournaments and persistence
 
@@ -79,9 +87,10 @@ when the module's flow changes.
 - Imports never switch the current tournament (`storeImportedTournament` writes the record only). The
   read-only view swaps the on-screen state, pauses auto-save, and restores the previous state on Close
   View.
-- Display Mode renders `DisplayBoard` from `buildDisplayBoard`. A window opened with `?display`
-  (`isDisplayModeUrl`) must never save: the auto-save effect skips it, and it reloads the current
-  tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
+- Display Mode renders `DisplayBoard` from `boardForTournament(state)`, for this device's tournament or
+  one followed from Firebase. With publishing on it opens on `DisplayPicker` (`initialDisplaySource`). A
+  window opened with `?display` or `?remote=<id>` must never save or publish: the auto-save and publish
+  effects skip it, and it reloads the current tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
   timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only
   relative units (`em`, `vw`/`vh`); px appears only as the font-size floor and ceiling in `clamp()`.
   Keep them relative. `displayLayout` is `{ arrangement: 'top' | 'left' | 'stacked', tables, standings }`
@@ -105,8 +114,11 @@ These match the README's Tournaments, Admin lock and Club leaderboard sections. 
 Open bugs are tracked as GitHub issues (https://github.com/DT209/foos-tourney/issues); the README links
 there. When you fix one, add a regression test and close the issue in the commit message (`Fixes #N`).
 
-- Tournaments are saved in one browser's `localStorage` only, not shared across devices or
-  organizers. Private browsing or blocked site data disables saving, and the footer says so.
+- Tournaments are saved in one browser's `localStorage` only. Publishing shares a read-only copy of the
+  tournament started with New Tournament, but editing stays on one browser at a time (take-over moves it).
+  Private browsing or blocked site data disables saving, and the footer says so.
+- On a plain-http LAN address (e.g. `http://192.168.0.22:8080`) the browser has no clipboard, so **Copy**
+  buttons report that copying failed. HTTPS hosting has no such limit.
 - The admin PIN is stored in the browser and only guards against accidental edits. **Forgot PIN?**
   unlocks after a confirm.
 - The live leaderboard only loads when the page is served from calgaryfoosballclub.com (CORS).

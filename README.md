@@ -50,7 +50,8 @@ mindmap
 
 ```mermaid
 flowchart TD
-    A["Open TournamentManager.html"] --> B["Set name, tables, match format"]
+    A["Open TournamentManager.html"] --> NT["New Tournament: published live for viewers"]
+    NT --> B["Set name, tables, match format"]
     B --> C["Add players: Add Player, Add from Leaderboard, or Recent players"]
     C --> D["Draw New Match"]
     D --> E["Enter game scores, then Finish Match"]
@@ -60,7 +61,7 @@ flowchart TD
     G --> H["Play bracket matches, then Confirm"]
     H --> I["Standings"]
     I --> J["Saved Tournaments: Export as CSV or JSON"]
-    D -.-> TV["Display Mode on a TV or phone throughout"]
+    D -.-> TV["Display Mode on a TV or phone throughout: tables on top, leaderboard and history below"]
 ```
 
 ## Playing a bracket
@@ -92,23 +93,39 @@ build constraints, testing approach, known limitations) are in
 
 ## Layout
 
-| File                     | Purpose                                                                 |
-| ------------------------ | ----------------------------------------------------------------------- |
-| `TournamentManager.html` | The page: React UI, compiled in the browser by Babel. No build step.    |
-| `tournament-logic.js`    | All tournament behaviour as plain functions (`window.TournamentLogic`). |
-| `firebase-remote.js`     | Thin Firestore adapter for publishing (`window.FirebaseRemote`).        |
-| `firebase-config.js`     | The Firebase web config. `null` (the default) turns publishing off.     |
-| `firestore.rules`        | Firestore security rules: the only server-side protection.              |
-| `firebase.json`          | Rules file and emulator ports for `firebase-tools`.                     |
-| `test/`                  | `node:test` unit tests for every function in `tournament-logic.js`.     |
-| `test-e2e/`              | UI tests: drive the real page in headless Chrome.                       |
-| `test-firebase/`         | Rules and adapter tests against the Firestore and Auth emulators.       |
-| `scripts/build.js`       | Quality gates, then copies the app to `dist/` unchanged.                |
+| File                          | Purpose                                                                       |
+| ----------------------------- | ----------------------------------------------------------------------------- |
+| `TournamentManager.html`      | The page: React UI, compiled in the browser by Babel. No build step.          |
+| `tournament-logic.js`         | All tournament behaviour as plain functions (`window.TournamentLogic`).       |
+| `firebase-remote.js`          | Thin Firestore adapter for publishing (`window.FirebaseRemote`).              |
+| `firebase-config.js`          | The `foos-tourney` Firebase web config (public). `null` turns publishing off. |
+| `firestore.rules`             | Firestore security rules: the only server-side protection.                    |
+| `firebase.json`               | Rules file and emulator ports (8181, 9199) for `firebase-tools`.              |
+| `.firebaserc`                 | Makes `foos-tourney` the default project for `firebase-tools`.                |
+| `eslint.compat.config.js`     | Cross-browser rules: target-browser APIs and secure-page-only APIs.           |
+| `docs/firebase-plan.md`       | The publishing design, decisions and risks.                                   |
+| `test/`                       | `node:test` unit tests for every function in `tournament-logic.js`.           |
+| `test-e2e/`                   | UI tests: drive the real page in headless Chrome.                             |
+| `test-firebase/`              | Rules and adapter tests against the Firestore and Auth emulators.             |
+| `scripts/build.js`            | Quality gates, then copies the app to `dist/` unchanged.                      |
+| `scripts/check-css-compat.js` | Cross-browser check for the page's CSS.                                       |
 
-Deploy by serving `TournamentManager.html`, `tournament-logic.js`, `firebase-config.js` and
-`firebase-remote.js` from the same directory (e.g. `calgaryfoosballclub.com/dyp/`). The live leaderboard
-fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
+Deploy by serving the contents of `dist/` (`TournamentManager.html`, `tournament-logic.js`,
+`firebase-config.js` and `firebase-remote.js`) from one directory, e.g. `calgaryfoosballclub.com/dyp/`.
+The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
+
+To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
+
+```sh
+npm run build                                      # or: npm run build -- --skip-e2e --skip-firebase (about a minute)
+npx http-server@14.1.1 dist -a 0.0.0.0 -p 8080 -c-1   # then open http://<laptop-ip>:8080/TournamentManager.html
+```
+
+A plain-http address like `http://192.168.0.22:8080` isn't a secure page, so browsers leave out the
+clipboard there: **Copy** buttons say copying failed (select the text instead). Everything else works.
+Hosting on HTTPS (the club site) has neither limit. Keep port 8080 for this: the Firebase emulators use
+8181 and 9199.
 
 ## Development
 
@@ -121,6 +138,7 @@ npm test            # unit tests
 npm run test:e2e    # UI tests in headless Chrome (needs Chrome + network for the CDN scripts)
 npm run coverage:ui # after test:e2e: which UI functions never ran
 npm run coverage    # unit tests + 100% coverage gate (HTML report in coverage/)
+npm run check:browsers # cross-browser check: JS APIs, secure-page-only APIs, CSS
 npm run test:firebase # rules + adapter tests on the emulators, 100% adapter coverage (needs Java)
 npm run check       # every quality gate, no dist/
 npm run build       # every quality gate, then dist/
@@ -148,8 +166,9 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 
 The JavaScript is never transpiled, bundled or minified.
 
-Chrome is found via `CHROME_PATH` or the usual install paths. GitHub Actions' `ubuntu-latest` has it.
-Steps 6 and 7 are skipped with `--skip-e2e` where Chrome or the network is unavailable.
+Chrome is found via `CHROME_PATH` or the usual install paths. The CI image (`ubuntu-24.04`) has it, and CI
+installs Java 21 for the emulators. Steps 7 and 8 are skipped with `--skip-e2e` where Chrome or the
+network is unavailable.
 
 UI coverage is measured with Chrome's own V8 coverage of the compiled page script, merged across every
 page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers are excluded.
@@ -163,7 +182,8 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 - **Recent players:** people from your previous 3 tournaments (by start time) who aren't on the club
   leaderboard, such as guests, appear in a "Recent players" section of **Add from Leaderboard** and in
   name suggestions. Typing one adds them directly, without the guest prompt.
-- **New Tournament** starts a fresh event and keeps the previous one. **Saved Tournaments** lists past
+- **New Tournament** starts a fresh event, keeps the previous one, and publishes the new one (see
+  [Publishing](#publishing-firebase)). **Saved Tournaments** lists past
   events to reopen or delete. The current tournament can't be deleted. The list is ordered by start time, newest first,
   and opening a tournament doesn't change the order.
 - CSV match IDs are prefixed with the tournament UUID, so exports never collide across events.
@@ -185,7 +205,7 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 - Imported files are validated field by field like saved data. Other JSON files and exports from a
   newer version are rejected with a message.
 - **From Firebase** lists the tournaments published from other devices and hands the chosen one to the
-  same review. It is disabled until publishing is set up (see [Publishing](#publishing-firebase)).
+  same review, so it can be added or viewed read-only (see [Publishing](#publishing-firebase)).
 - Private browsing or blocked site data disables auto-save, and the footer says so.
 - Saves from before tournaments had ids are migrated automatically on first load.
 
@@ -252,13 +272,20 @@ which are followed live. **Switch tournament** returns to the list. A viewer lin
 (`TournamentManager.html?remote=<id>`) opens straight to a published tournament on any phone or TV.
 
 ```mermaid
-flowchart LR
-    DESK["Control desk: score matches"] -->|"auto-save"| LS[("Browser storage")]
-    LS -->|"storage event"| WIN["?display window on a TV"]
-    DESK -->|"Display Mode"| BOARD["Board in the same tab"]
-    BOARD -->|"Open on Another Screen"| WIN
-    BOARD -->|"drag handles or arrow keys"| LAYOUT[("Layout preference")]
-    LAYOUT --> WIN
+flowchart TD
+    DESK["Control desk: score matches"] -->|"Display Mode"| PICK{"Choose a tournament"}
+    PICK -->|"This device (default)"| BOARD["Board: tables on top, leaderboard and history below"]
+    PICK -->|"a published tournament"| LIVE["Board followed live from Firebase"]
+    BOARD -->|"Layout button"| ARR["Tables on top, Tables left or Stacked"]
+    BOARD -->|"drag, or arrow keys on a handle (TV remote)"| SIZE["Height and width splits"]
+    ARR --> PREF[("Layout preference in this browser")]
+    SIZE --> PREF
+    DESK -->|"auto-save"| LS[("Browser storage")]
+    LS -->|"storage events: tournament and layout"| WIN["?display window on a TV over HDMI"]
+    PREF --> LS
+    BOARD -->|"Open on Another Screen, with ?layout="| WIN
+    LINK["Viewer link ?remote=id&layout=..."] --> TVB["A TV's own browser or a phone"]
+    TVB --> LIVE
     WIN -->|"Exit Display"| DESK2["Control desk in that window"]
 ```
 
@@ -296,7 +323,7 @@ flowchart LR
     ASK -->|"Replace"| PUB
     ASK -->|"Keep Current"| LOCAL["Stays local"]
     DESK["Control desk changes"] -->|"tables, leaderboard, history; max every 5 s"| PUB
-    PUB -->|"live"| VIEW["Display Mode list or ?remote link"]
+    PUB -->|"live"| VIEW["Display Mode list, or a ?remote viewer link with the layout"]
     PUB --> IMP["Import: From Firebase"]
     CODE["Publisher code"] -->|"Take over"| DESK2["Another browser publishes"]
 ```
