@@ -1,7 +1,7 @@
 # Firebase publishing plan
 
-Status: phases 1 to 3 built and tested, off until phase 0. `firebase-config.js` holds `null` until the
-club creates the Firebase project; the README's Publishing section lists the steps.
+Status: built and on. Phases 0 to 3 are done: the `foos-tourney` project exists, its rules are deployed
+and `firebase-config.js` holds its config. Still to do: a live check from a phone on another network.
 
 Changes from the proposal, found while building:
 

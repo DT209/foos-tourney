@@ -38,7 +38,7 @@ mindmap
       Panels scroll by themselves
       Second screen window that follows live play
       Resizable areas, remembered per browser
-    Publishing, off until Firebase is set up
+    Publishing to Firebase
       New Tournament publishes live for any device
       Display Mode list and viewer links
       Publisher code to take over
@@ -249,8 +249,9 @@ flowchart LR
 ## Publishing (Firebase)
 
 Publishing lets anyone follow a tournament live from any device, and import it, without accounts. It
-is built and tested but **off** until `firebase-config.js` holds a project's config. The design and
-its reasoning are in the [Firebase publishing plan](docs/firebase-plan.md).
+uses the club's `foos-tourney` Firebase project (free Spark plan). Setting `firebase-config.js` back to
+`null` turns it off. The design and its reasoning are in the
+[Firebase publishing plan](docs/firebase-plan.md).
 
 - **New Tournament** publishes the new tournament at once. The tournament a first visit creates on
   its own stays local.
@@ -266,7 +267,7 @@ its reasoning are in the [Firebase publishing plan](docs/firebase-plan.md).
   "Publishing moved to another device".
 - Everything published is readable by anyone, including names, results and paid flags.
 
-To turn it on:
+Setting up a project (already done for `foos-tourney`):
 
 1. Create a Firebase project, enable Firestore and **Anonymous** sign-in, and register a web app.
 2. Paste the web app's config into `firebase-config.js` (it is meant to be public).

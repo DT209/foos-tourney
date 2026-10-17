@@ -105,9 +105,10 @@ there. When you fix one, add a regression test and close the issue in the commit
   Elsewhere the page uses the bundled snapshot and shows its date. `npm run refresh-leaderboard`
   updates it. Live data on another host needs the club site to send `Access-Control-Allow-Origin`
   for that host on `/leaderboard/`.
-- Publishing to Firebase is built but off: `firebase-config.js` holds `null` until the club creates the
-  project (phase 0 in `docs/firebase-plan.md`). With it off, the page makes no Firebase requests, Display
-  Mode skips the tournament list, and **From Firebase** is disabled. Published data is readable by anyone.
+- Publishing uses the `foos-tourney` Firebase project (`firebase-config.js`, `.firebaserc`). Setting the
+  config to `null` turns it off: no Firebase requests, Display Mode skips the tournament list, **From
+  Firebase** is disabled. UI tests always run with it off or faked. After changing `firestore.rules`, deploy
+  with `npx firebase-tools@15.32.1 deploy --only firestore:rules`. Published data is readable by anyone.
 - Publishing has no CAPTCHA or App Check, so a script minting anonymous ids could hold slots. See the
   plan's risks.
 - UI tests need Chrome and network access (React, Babel and Tailwind load from CDNs). Use
