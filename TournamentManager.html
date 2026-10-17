@@ -61,17 +61,21 @@
     .db-actions { display: flex; gap: 0.4em; }
     .db-btn { font-size: 0.65em; padding: 0.5em 0.9em; border-radius: 0.4em; border: 0.08em solid #2e3543; background: #181b22; color: #e5e7eb; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
     .db-btn:hover { border-color: #d12328; }
-    .db-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, var(--db-left)) 0.7em minmax(0, var(--db-right)); }
-    .db-side { min-height: 0; display: flex; flex-direction: column; }
-    .db-standings { flex: var(--db-top) 1 0; }
-    .db-history { flex: var(--db-bottom) 1 0; }
-    .db-split { position: relative; touch-action: none; outline: none; }
-    .db-split::after { content: ""; position: absolute; border-radius: 1em; background: #2e3543; }
-    .db-split:hover::after, .db-split:focus-visible::after { background: #d12328; }
-    .db-split-cols { cursor: col-resize; }
-    .db-split-cols::after { left: 50%; top: 40%; width: 0.2em; height: 20%; transform: translateX(-50%); }
-    .db-split-rows { cursor: row-resize; height: 0.7em; flex: none; }
-    .db-split-rows::after { top: 50%; left: 40%; height: 0.2em; width: 20%; transform: translateY(-50%); }
+    .db-grid { flex: 1; min-height: 0; display: grid; }
+    .db-grid[data-arrangement="left"] { grid-template-columns: minmax(0, var(--db-tables)) 0.7em minmax(0, var(--db-rest)); }
+    .db-grid[data-arrangement="top"], .db-grid[data-arrangement="stacked"] { grid-template-rows: minmax(0, var(--db-tables)) 0.7em minmax(0, var(--db-rest)); }
+    .db-side { min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+    .db-grid[data-arrangement="top"] .db-side { flex-direction: row; }
+    .db-standings { flex: var(--db-standings) 1 0; min-width: 0; }
+    .db-history { flex: var(--db-history) 1 0; min-width: 0; }
+    .db-split { position: relative; touch-action: none; outline: none; flex: none; }
+    .db-split::after { content: ""; position: absolute; border-radius: 1em; background: #3b4352; }
+    .db-split:hover::after, .db-split:focus::after { background: #d12328; }
+    .db-split:focus { box-shadow: inset 0 0 0 0.12em #d12328; border-radius: 0.3em; }
+    .db-split-x { cursor: col-resize; width: 0.7em; }
+    .db-split-x::after { left: 50%; top: 30%; width: 0.25em; height: 40%; transform: translateX(-50%); }
+    .db-split-y { cursor: row-resize; height: 0.7em; }
+    .db-split-y::after { top: 50%; left: 30%; height: 0.25em; width: 40%; transform: translateY(-50%); }
     .db-panel { min-height: 0; display: flex; flex-direction: column; background: #181b22; border: 0.08em solid #2e3543; border-radius: 0.6em; padding: 0.6em; }
     .db-panel h2 { font-size: 0.85em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; color: #d12328; margin: 0 0 0.4em; }
     .db-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
@@ -100,11 +104,12 @@
     .db-choice input { width: 1em; height: 1em; accent-color: #d12328; }
     .db-choice .db-name { font-weight: 800; overflow-wrap: anywhere; }
     .db-choice .db-muted { grid-column: 2; font-size: 0.75em; color: #9ca3af; }
-    @media (orientation: portrait), (max-width: 48em) {
+    /* Phones: tables, then leaderboard, then history, whatever the arrangement. */
+    @media (max-width: 48em) {
       .db { height: auto; min-height: 100vh; overflow: visible; }
-      .db-grid { grid-template-columns: 1fr; gap: 0.6em; }
-      .db-side { gap: 0.6em; }
-      .db-split { display: none; }
+      .db-grid[data-arrangement] { display: flex; flex-direction: column; gap: 0.6em; }
+      .db-grid[data-arrangement] .db-side { flex-direction: column; gap: 0.6em; }
+      .db-split, .db-layout-btn { display: none; }
       .db-standings, .db-history { flex: none; }
       .db-panel { max-height: 70vh; }
       .db-tables { max-height: none; }
@@ -141,7 +146,8 @@
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
       getCompletedMatchesList, formatHistoryRow, tournamentCsv,
       initialAutoScroll, nextAutoScroll, isDisplayModeUrl, displayModeUrl, controlDeskUrl,
-      DEFAULT_DISPLAY_LAYOUT, splitFromPointer, nudgeSplit, loadDisplayLayout, saveDisplayLayout, isTournamentStorageKey,
+      DEFAULT_DISPLAY_LAYOUT, DISPLAY_ARRANGEMENT_LABELS, splitFromPointer, nudgeSplit, nextArrangement, splitDirections,
+      loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
       copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
@@ -295,11 +301,13 @@
       return <div ref={ref} data-testid="auto-scroll" className="db-scroll">{children}</div>;
     }
 
-    // A drag handle between two display areas. `axis` is 'columns' (drag left/
-    // right) or 'rows' (drag up/down); `containerRef` is the box it divides.
-    // Drag listeners sit on window, so the drag continues past the handle.
-    function Splitter({ axis, value, onChange, containerRef, label }) {
-      const horizontal = axis === 'columns';
+    // A drag handle between two display areas. `axis` is the layout value it
+    // sets ('tables' or 'standings'); `direction` is 'x' (drag left/right) or
+    // 'y' (drag up/down); `containerRef` is the box it divides. Arrow keys move
+    // it 5% (a TV remote's arrows work once it has focus). Drag listeners sit on
+    // window, so the drag continues past the handle.
+    function Splitter({ axis, direction, value, onChange, containerRef, label }) {
+      const horizontal = direction === 'x';
       const startDrag = (e) => {
         e.preventDefault();
         const rect = containerRef.current.getBoundingClientRect();
@@ -322,6 +330,7 @@
       return (
         <div
           data-testid={`split-${axis}`}
+          data-direction={direction}
           role="separator"
           aria-orientation={horizontal ? 'vertical' : 'horizontal'}
           aria-label={label}
@@ -329,8 +338,8 @@
           aria-valuemax={80}
           aria-valuenow={Math.round(value * 100)}
           tabIndex={0}
-          title="Drag to resize, double-click to reset"
-          className={`db-split db-split-${axis}`}
+          title="Drag (or focus and use the arrow keys) to resize, double-click to reset"
+          className={`db-split db-split-${direction}`}
           onPointerDown={startDrag}
           onKeyDown={onKeyDown}
           onDoubleClick={() => onChange(DEFAULT_DISPLAY_LAYOUT[axis])}
@@ -341,6 +350,7 @@
     function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, layout, onLayoutChange }) {
       const gridRef = useRef(null);
       const sideRef = useRef(null);
+      const directions = splitDirections(layout.arrangement);
       return (
         <div data-testid="display-board" className="db">
           <div className="db-head">
@@ -349,6 +359,13 @@
               <div className="db-sub">Started {started}</div>
             </div>
             <div className="db-actions">
+              <button
+                data-testid="layout-button"
+                className="db-btn db-layout-btn"
+                onClick={() => onLayoutChange({ ...layout, arrangement: nextArrangement(layout.arrangement) })}
+              >
+                Layout: {DISPLAY_ARRANGEMENT_LABELS[layout.arrangement]}
+              </button>
               {onSwitch && <button className="db-btn" onClick={onSwitch}>Switch tournament</button>}
               {onOpenWindow && <button className="db-btn" onClick={onOpenWindow}>Open on Another Screen</button>}
               <button className="db-btn" onClick={onExit}>Exit Display</button>
@@ -357,12 +374,13 @@
           <div
             ref={gridRef}
             data-testid="display-grid"
+            data-arrangement={layout.arrangement}
             className="db-grid"
             style={{
-              '--db-left': `${layout.columns}fr`,
-              '--db-right': `${1 - layout.columns}fr`,
-              '--db-top': layout.rows,
-              '--db-bottom': 1 - layout.rows
+              '--db-tables': `${layout.tables}fr`,
+              '--db-rest': `${1 - layout.tables}fr`,
+              '--db-standings': layout.standings,
+              '--db-history': 1 - layout.standings
             }}
           >
             <section data-testid="display-tables" className="db-panel db-tables">
@@ -395,11 +413,12 @@
               </AutoScroll>
             </section>
             <Splitter
-              axis="columns"
-              value={layout.columns}
+              axis="tables"
+              direction={directions.tables}
+              value={layout.tables}
               containerRef={gridRef}
               label="Resize tables against leaderboard and history"
-              onChange={columns => onLayoutChange({ ...layout, columns })}
+              onChange={tables => onLayoutChange({ ...layout, tables })}
             />
             <div ref={sideRef} className="db-side">
             <section data-testid="display-standings" className="db-panel db-standings">
@@ -417,11 +436,12 @@
               </AutoScroll>
             </section>
             <Splitter
-              axis="rows"
-              value={layout.rows}
+              axis="standings"
+              direction={directions.standings}
+              value={layout.standings}
               containerRef={sideRef}
               label="Resize leaderboard against match history"
-              onChange={rows => onLayoutChange({ ...layout, rows })}
+              onChange={standings => onLayoutChange({ ...layout, standings })}
             />
             <section data-testid="display-history" className="db-panel db-history">
               <h2>Match History</h2>
@@ -512,10 +532,23 @@
       const [displayList, setDisplayList] = useState({ loading: true, published: [] });
       // A followed published tournament: { loading }, { tournament }, { gone } or { error }.
       const [remoteView, setRemoteView] = useState({ loading: true });
-      const [displayLayout, setDisplayLayout] = useState(() => loadDisplayLayout(storage));
+      // A ?layout= link (e.g. a viewer link opened on a TV's own browser) wins
+      // over this browser's saved layout.
+      const [displayLayout, setDisplayLayout] = useState(
+        () => layoutFromSearch(window.location.search) || loadDisplayLayout(storage)
+      );
       useEffect(() => {
         saveDisplayLayout(storage, displayLayout);
       }, [storage, displayLayout]);
+      // Layout changes in another window of this browser (e.g. the laptop driving
+      // a TV over HDMI) apply here at once.
+      useEffect(() => {
+        const onStorage = (e) => {
+          if (isDisplayLayoutKey(e.key)) setDisplayLayout(loadDisplayLayout(storage));
+        };
+        window.addEventListener('storage', onStorage);
+        return () => window.removeEventListener('storage', onStorage);
+      }, [storage]);
 
       // Tournament identity: a UUID, not a date - events often run past midnight.
       const [tournamentId, setTournamentId] = useState(restored.tournamentId);
@@ -742,7 +775,7 @@
 
       const saveCodeFile = () => {
         const state = currentTournamentState();
-        const viewerUrl = remoteTournamentUrl(window.location.href, tournamentId);
+        const viewerUrl = remoteTournamentUrl(window.location.href, tournamentId, displayLayout);
         downloadText(publisherCodeFile({ state, code: publishing.code, viewerUrl }), publisherCodeFileName(state), 'text/plain');
       };
 
@@ -1191,7 +1224,7 @@
               title={followed.tournamentName}
               started={formatStartedAt(followed.startedAt)}
               onExit={exitDisplay}
-              onOpenWindow={isDisplayWindow ? null : () => window.open(remoteTournamentUrl(window.location.href, displaySource.id), '_blank')}
+              onOpenWindow={isDisplayWindow ? null : () => window.open(remoteTournamentUrl(window.location.href, displaySource.id, displayLayout), '_blank')}
               onSwitch={onSwitch}
               layout={displayLayout}
               onLayoutChange={setDisplayLayout}
@@ -1204,7 +1237,7 @@
             title={tournamentName}
             started={formatStartedAt(startedAt)}
             onExit={exitDisplay}
-            onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href), '_blank')}
+            onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href, displayLayout), '_blank')}
             onSwitch={onSwitch}
             layout={displayLayout}
             onLayoutChange={setDisplayLayout}
@@ -1736,8 +1769,8 @@
                             <p className="text-emerald-300 font-bold">Live in slot {publishing.slot}. Anyone can follow it in Display Mode.</p>
                             <div>
                               <span className="block text-[11px] text-gray-400 uppercase tracking-wider">Viewer link</span>
-                              <code data-testid="viewer-link" className="block break-all text-white">{remoteTournamentUrl(window.location.href, tournamentId)}</code>
-                              <button onClick={() => copyText(remoteTournamentUrl(window.location.href, tournamentId))} className="mt-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
+                              <code data-testid="viewer-link" className="block break-all text-white">{remoteTournamentUrl(window.location.href, tournamentId, displayLayout)}</code>
+                              <button onClick={() => copyText(remoteTournamentUrl(window.location.href, tournamentId, displayLayout))} className="mt-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
                                 Copy Link
                               </button>
                             </div>

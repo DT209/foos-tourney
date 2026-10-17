@@ -37,7 +37,7 @@ mindmap
       Tables, leaderboard and history for TVs and phones
       Panels scroll by themselves
       Second screen window that follows live play
-      Resizable areas, remembered per browser
+      Tables on top by default, three layouts, resizable
     Publishing to Firebase
       New Tournament publishes live for any device
       Display Mode list and viewer links
@@ -220,15 +220,27 @@ flowchart TD
 - **Match history:** most recent first.
 
 Panels scroll by themselves when their content doesn't fit, pausing at the top and bottom. Devices set
-to reduce motion scroll manually instead. All sizes are relative to the screen: landscape screens show
-the tables beside the leaderboard and history, portrait screens stack them. It works while locked and
-in the read-only view.
+to reduce motion scroll manually instead. All sizes are relative to the screen. It works while locked
+and in the read-only view.
 
-On landscape screens the areas can be resized. Drag the handle between the tables and the right-hand
-column, or between the leaderboard and match history. With a handle focused, the arrow keys move it in
-5% steps, and a double-click resets it. No area goes below 20%. Sizes are fractions of the screen, so
-the layout stays proportional on any display. They're remembered in this browser, including by the
-second-screen window. Portrait phones keep the stacked layout without handles.
+On wide screens (TVs, laptops) the default layout puts the tables on top, with the leaderboard and
+match history side by side underneath. **Layout** in the board's header switches between:
+
+- **Tables on top** (default): leaderboard and history side by side below.
+- **Tables left**: leaderboard above history on the right.
+- **Stacked**: tables, leaderboard and history in full-width rows.
+
+Every layout has two handles: one between the tables and the rest, and one between the leaderboard and
+match history. Drag them with a mouse, or focus one and use the arrow keys (5% steps), which also works
+with a TV remote. A double-click resets a handle. No area goes below 20%.
+
+Phones always show tables, then the leaderboard, then match history, without handles or the Layout
+button.
+
+The layout is remembered in this browser. A second-screen window on the same computer (a TV over HDMI)
+follows layout changes made on the laptop straight away. **Open on Another Screen** and the publishing
+viewer link carry the current layout (`?layout=top-50-50`), so a TV's own browser opens already
+arranged.
 
 **Open on Another Screen** opens the board in a new window (`TournamentManager.html?display=1`) that
 can be moved to a TV. It updates as you score on the control desk and never saves anything. Without

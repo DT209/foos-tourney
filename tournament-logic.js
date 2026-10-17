@@ -2038,24 +2038,32 @@ globalThis.TournamentLogic = (() => {
     return params.has('display') && params.get('display') !== '0';
   }
 
-  function displayModeUrl(href) {
+  // layout (optional): the display layout for the new window to open with.
+  function displayModeUrl(href, layout) {
     const url = new URL(href);
     url.searchParams.set('display', '1');
+    if (layout) url.searchParams.set('layout', layoutParam(layout));
     return url.toString();
   }
 
   function controlDeskUrl(href) {
     const url = new URL(href);
-    url.searchParams.delete('display');
-    url.searchParams.delete('remote');
+    ['display', 'remote', 'layout'].forEach(param => url.searchParams.delete(param));
     return url.toString();
   }
 
-  // Resizable areas: fractions, so the layout stays relative to the screen.
-  // columns = the tables' share of the width; rows = the leaderboard's share
-  // of the side column. Stored per browser as a display preference.
+  // Display layout: an arrangement plus two fractions, so it stays relative
+  // to the screen. Stored per browser as a display preference, and carried in
+  // ?layout= links for screens that can't drag (a TV's own browser).
+  //   top     tables on top; leaderboard and history side by side below (default)
+  //   left    tables on the left; leaderboard above history on the right
+  //   stacked tables, leaderboard and history in full-width rows
+  // tables = the tables' share of the screen; standings = the leaderboard's
+  // share of the rest. Narrow screens (phones) always stack, without handles.
   const DISPLAY_LAYOUT_KEY = 'foosTourney.displayLayout';
-  const DEFAULT_DISPLAY_LAYOUT = { columns: 0.58, rows: 0.5 };
+  const DISPLAY_ARRANGEMENTS = ['top', 'left', 'stacked'];
+  const DISPLAY_ARRANGEMENT_LABELS = { top: 'Tables on top', left: 'Tables left', stacked: 'Stacked' };
+  const DEFAULT_DISPLAY_LAYOUT = { arrangement: 'top', tables: 0.5, standings: 0.5 };
   const MIN_SPLIT = 0.2;
   const MAX_SPLIT = 0.8;
   const roundSplit = v => Math.round(v * 100) / 100;
@@ -2066,27 +2074,61 @@ globalThis.TournamentLogic = (() => {
 
   // pointer position -> fraction of a container starting at `start` with `size`.
   function splitFromPointer(position, start, size) {
-    if (size <= 0) return DEFAULT_DISPLAY_LAYOUT.columns;
+    if (size <= 0) return DEFAULT_DISPLAY_LAYOUT.tables;
     return clampSplit((position - start) / size);
   }
 
-  // Keyboard resizing: 5% per arrow press.
+  // Keyboard (or TV remote) resizing: 5% per arrow press.
   function nudgeSplit(value, direction) {
     return clampSplit(value + direction * 0.05);
   }
 
+  function nextArrangement(arrangement) {
+    return DISPLAY_ARRANGEMENTS[(DISPLAY_ARRANGEMENTS.indexOf(arrangement) + 1) % DISPLAY_ARRANGEMENTS.length];
+  }
+
+  // Which way each handle drags: 'x' (left/right) or 'y' (up/down).
+  function splitDirections(arrangement) {
+    if (arrangement === 'left') return { tables: 'x', standings: 'y' };
+    return { tables: 'y', standings: arrangement === 'top' ? 'x' : 'y' };
+  }
+
+  // Any saved or linked layout -> a valid one, falling back per value.
+  function normalizeDisplayLayout(saved) {
+    const valid = isPlainObject(saved) ? saved : {};
+    const split = key =>
+      typeof valid[key] === 'number' && isFinite(valid[key]) ? clampSplit(valid[key]) : DEFAULT_DISPLAY_LAYOUT[key];
+    return {
+      arrangement: DISPLAY_ARRANGEMENTS.includes(valid.arrangement)
+        ? valid.arrangement
+        : DEFAULT_DISPLAY_LAYOUT.arrangement,
+      tables: split('tables'),
+      standings: split('standings')
+    };
+  }
+
   function loadDisplayLayout(storage) {
-    let saved = null;
     try {
-      saved = JSON.parse(storage.getItem(DISPLAY_LAYOUT_KEY));
+      return normalizeDisplayLayout(JSON.parse(storage.getItem(DISPLAY_LAYOUT_KEY)));
     } catch {
-      saved = null;
+      return { ...DEFAULT_DISPLAY_LAYOUT };
     }
-    const pick = key =>
-      saved && typeof saved[key] === 'number' && isFinite(saved[key])
-        ? clampSplit(saved[key])
-        : DEFAULT_DISPLAY_LAYOUT[key];
-    return { columns: pick('columns'), rows: pick('rows') };
+  }
+
+  // ?layout=top-50-45: arrangement, tables %, leaderboard %.
+  function layoutParam(layout) {
+    return `${layout.arrangement}-${Math.round(layout.tables * 100)}-${Math.round(layout.standings * 100)}`;
+  }
+
+  function layoutFromSearch(search) {
+    const match = /^(top|left|stacked)-(\d{1,3})-(\d{1,3})$/.exec(new URLSearchParams(search).get('layout') || '');
+    if (!match) return null;
+    return normalizeDisplayLayout({ arrangement: match[1], tables: match[2] / 100, standings: match[3] / 100 });
+  }
+
+  // Whether a storage change can affect the display layout (null: storage cleared).
+  function isDisplayLayoutKey(key) {
+    return key === null || key === DISPLAY_LAYOUT_KEY;
   }
 
   function saveDisplayLayout(storage, layout) {
@@ -2452,10 +2494,11 @@ globalThis.TournamentLogic = (() => {
     return clipboard.writeText(text);
   }
 
-  function remoteTournamentUrl(href, id) {
+  function remoteTournamentUrl(href, id, layout) {
     const url = new URL(href);
     url.searchParams.delete('display');
     url.searchParams.set('remote', id);
+    if (layout) url.searchParams.set('layout', layoutParam(layout));
     return url.toString();
   }
 
@@ -2581,12 +2624,20 @@ globalThis.TournamentLogic = (() => {
     displayModeUrl,
     controlDeskUrl,
     DISPLAY_LAYOUT_KEY,
+    DISPLAY_ARRANGEMENTS,
+    DISPLAY_ARRANGEMENT_LABELS,
     DEFAULT_DISPLAY_LAYOUT,
     clampSplit,
     splitFromPointer,
     nudgeSplit,
+    nextArrangement,
+    splitDirections,
+    normalizeDisplayLayout,
     loadDisplayLayout,
     saveDisplayLayout,
+    layoutParam,
+    layoutFromSearch,
+    isDisplayLayoutKey,
     isTournamentStorageKey,
     // publishing (Firebase)
     PUBLISH_SLOTS,

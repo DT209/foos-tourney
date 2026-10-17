@@ -124,7 +124,7 @@ describe('starting to publish', () => {
     await app.click('Publishing');
     const dialog = await app.textOf(DIALOG);
     assert.match(dialog, /Live in slot 1/);
-    assert.match(await app.textOf('[data-testid="viewer-link"]'), new RegExp(`\\?remote=${id}$`));
+    assert.match(await app.textOf('[data-testid="viewer-link"]'), new RegExp(`\\?remote=${id}&layout=top-50-50$`));
     const code = await app.textOf('[data-testid="publisher-code"]');
     assert.match(code, /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
     assert.equal(server.codes[id], code.replace(/-/g, ''));

@@ -136,7 +136,10 @@ describe('following a published tournament', () => {
       window.open = url => window.__opened.push(url);
     });
     await app.click('Open on Another Screen');
-    assert.match((await app.page.evaluate(() => window.__opened))[0], new RegExp(`\\?remote=${OTHER_ID}$`));
+    assert.match(
+      (await app.page.evaluate(() => window.__opened))[0],
+      new RegExp(`\\?remote=${OTHER_ID}&layout=top-50-50$`)
+    );
 
     await app.page.evaluate(id => {
       const server = JSON.parse(localStorage.getItem('__fakeRemote.server'));

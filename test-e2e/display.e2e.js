@@ -99,13 +99,15 @@ describe('layout and sizing', () => {
     assert.ok(tvSize > phoneSize * 1.5, `TV ${tvSize}px vs phone ${phoneSize}px`);
   });
 
-  it('a TV shows tables beside the leaderboard and history; a phone stacks them', async () => {
+  it('a TV shows tables on top with the leaderboard and history beside each other; a phone stacks them', async () => {
     app = await openApp({ viewport: TV });
     await app.addAllLeaderboardPlayers();
     await app.click('Display Mode');
     let tablesBox = await boxOf(app.page, '[data-testid="display-tables"]');
     let standingsBox = await boxOf(app.page, '[data-testid="display-standings"]');
-    assert.ok(standingsBox.left >= tablesBox.right - 1, 'side by side on a TV');
+    const historyBox = await boxOf(app.page, '[data-testid="display-history"]');
+    assert.ok(standingsBox.top >= tablesBox.bottom - 1, 'tables on top on a TV');
+    assert.ok(historyBox.left >= standingsBox.right - 1, 'leaderboard and history side by side');
     const board = await boxOf(app.page, BOARD);
     assert.ok(board.height <= TV.height + 1, 'fits the TV screen; panels scroll instead');
 
@@ -189,6 +191,6 @@ describe('second screen', () => {
       };
     });
     await app.click('Open on Another Screen');
-    assert.match(await app.page.evaluate(() => window.__opened), /\?display=1$/);
+    assert.match(await app.page.evaluate(() => window.__opened), /\?display=1&layout=top-50-50$/);
   });
 });

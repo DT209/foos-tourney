@@ -241,15 +241,20 @@ flowchart TD
     H --> AS
     DW --> SE["storage event for a tournament key (isTournamentStorageKey): reload and applyTournament"]
     SE --> RENDER
-    RENDER --> SP["Splitter handles: splitFromPointer on drag, nudgeSplit on arrow keys, default on double-click"]
-    SP --> LY["displayLayout state, fractions clamped to 20-80%"]
-    LY -->|"--db-left / --db-right / --db-top / --db-bottom CSS variables"| RENDER
+    RENDER --> SP["Splitter handles: splitDirections picks x or y; splitFromPointer on drag, nudgeSplit on arrow keys, default on double-click"]
+    RENDER --> LB["Layout button: nextArrangement top, left, stacked"]
+    LB --> LY
+    SP --> LY["displayLayout: arrangement + tables + standings, fractions clamped to 20-80%"]
+    LY -->|"data-arrangement + --db-tables / --db-rest / --db-standings / --db-history"| RENDER
     LY --> SV["saveDisplayLayout: foosTourney.displayLayout, a browser preference"]
+    SV -->|"storage event: isDisplayLayoutKey"| OW["Other windows reload it (HDMI TV window)"]
+    URLL["?layout=top-50-50: layoutFromSearch wins on load"] --> LY
+    LY -->|"layoutParam"| LINKS["Open on Another Screen and viewer links"]
 ```
 
 The layout is loaded with `loadDisplayLayout` (invalid values fall back per value). Drag listeners
-attach to `window`, so a drag keeps going outside the handle. Portrait screens hide the handles and
-stack the panels.
+attach to `window`, so a drag keeps going outside the handle. Screens narrower than 48em (phones) hide
+the handles and the Layout button and stack tables, leaderboard and history.
 
 `nextAutoScroll` cycles top pause, scroll, bottom pause, back to top. The step is 0.4% of the panel's
 height per tick, so speed scales with the screen. Content that fits never moves, and

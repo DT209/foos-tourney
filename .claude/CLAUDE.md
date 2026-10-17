@@ -84,8 +84,11 @@ when the module's flow changes.
   tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
   timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only
   relative units (`em`, `vw`/`vh`); px appears only as the font-size floor and ceiling in `clamp()`.
-  Keep them relative. Area sizes are fractions in `displayLayout` (`foosTourney.displayLayout`, a browser
-  preference, not tournament data), applied through CSS variables on the grid.
+  Keep them relative. `displayLayout` is `{ arrangement: 'top' | 'left' | 'stacked', tables, standings }`
+  (`foosTourney.displayLayout`, a browser preference, not tournament data). Fractions reach the grid as CSS
+  variables, and `data-arrangement` picks the grid. `splitDirections` says which way each handle drags.
+  Other windows follow layout changes through `storage` events (`isDisplayLayoutKey`), and `?layout=`
+  links (`layoutParam`, `layoutFromSearch`) carry it to other devices. Below 48em everything stacks.
 - Publishing state is `foosTourney.publishing` (`{ tournamentId, slot, code }`, one per browser), never part of
   a tournament or its export. The published copy is the Export JSON text from `publishedExport`, with the PIN
   and lock blanked. Firestore can't store the bracket's nested arrays, so it is a string, not a map. Only
