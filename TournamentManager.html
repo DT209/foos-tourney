@@ -149,9 +149,10 @@
     } = window.TournamentLogic;
 
     // Publishing to Firebase: null unless firebase-config.js holds a config.
-    // UI tests swap in a recording fake (window.foosRemoteForTests).
-    const remote = window.foosRemoteForTests ||
-      window.FirebaseRemote.create({ config: window.FOOS_FIREBASE_CONFIG, logic: window.TournamentLogic });
+    // UI tests set window.foosRemoteForTests: null (off) or a recording fake.
+    const remote = 'foosRemoteForTests' in window
+      ? window.foosRemoteForTests
+      : window.FirebaseRemote.create({ config: window.FOOS_FIREBASE_CONFIG, logic: window.TournamentLogic });
 
     // e.g. "Fri, Oct 16, 11:40 PM" in the viewer's local time.
     const formatStartedAt = (iso) =>

@@ -84,6 +84,10 @@ async function saveUiCoverage(page) {
 
 const COVERAGE_OPTIONS = { resetOnNavigation: false, reportAnonymousScripts: true, includeRawScriptCoverage: true };
 
+const PUBLISHING_OFF = () => {
+  window.foosRemoteForTests = null;
+};
+
 const pause = (ms = 50) => new Promise(r => setTimeout(r, ms));
 
 async function openApp({
@@ -108,8 +112,10 @@ async function openApp({
   await page.emulateTimezone(timezone);
   await page.evaluateOnNewDocument(FAKE_CLOCK);
   if (beforeLoad) await page.evaluateOnNewDocument(beforeLoad);
-  // remote: publishing switched on, with the recording fake (fake-remote.js).
-  if (remote) await page.evaluateOnNewDocument(installFakeRemote);
+  // Publishing is off unless remote: true installs the recording fake
+  // (fake-remote.js). Tests never reach the real Firebase project.
+  const installRemote = target => target.evaluateOnNewDocument(remote ? installFakeRemote : PUBLISHING_OFF);
+  await installRemote(page);
 
   // Stub the club site: a live leaderboard (with CORS allowed) and/or a broken logo.
   if (liveLeaderboard || blockLogo) {
@@ -144,7 +150,7 @@ async function openApp({
       await extra.setViewport(viewport);
       if (collectCoverage) await extra.coverage.startJSCoverage(COVERAGE_OPTIONS);
       extra.on('pageerror', e => app.errors.push(e.message));
-      if (remote) await extra.evaluateOnNewDocument(installFakeRemote);
+      await installRemote(extra);
       extraPages.push(extra);
       await extra.goto(`${url}${search}`, { waitUntil: 'networkidle0' });
       return extra;
