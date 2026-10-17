@@ -83,19 +83,19 @@
     .db-team { font-size: 1em; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
     .db-vs { font-size: 0.65em; color: #d12328; font-weight: 900; margin: 0.15em 0; }
     .db-wins { float: right; font-size: 1em; font-weight: 900; color: #34d399; }
-    .db-games { font-size: 0.7em; color: #d1d5db; margin-top: 0.3em; font-family: ui-monospace, monospace; }
+    .db-games { font-size: 0.7em; color: #d1d5db; margin-top: 0.3em; font-family: Menlo, Consolas, "Liberation Mono", monospace; }
     .db-free { font-size: 0.9em; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.6em 0; }
     .db-row { display: grid; grid-template-columns: 2em 1fr auto auto; gap: 0.5em; align-items: baseline; font-size: 0.8em; padding: 0.3em 0.2em; border-bottom: 0.06em solid #2e3543; }
     .db-row .db-rank { color: #9ca3af; font-weight: 800; }
     .db-row .db-name { font-weight: 700; overflow-wrap: anywhere; }
-    .db-row .db-muted { color: #9ca3af; font-family: ui-monospace, monospace; }
+    .db-row .db-muted { color: #9ca3af; font-family: Menlo, Consolas, "Liberation Mono", monospace; }
     .db-paused { opacity: 0.55; }
     .db-match { font-size: 0.75em; padding: 0.35em 0.2em; border-bottom: 0.06em solid #2e3543; }
     .db-match .db-stage { color: #9ca3af; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; }
     .db-match .db-winner { color: #34d399; font-weight: 800; }
     .db-empty { font-size: 0.75em; color: #6b7280; font-style: italic; }
     .db-pick { width: 100%; max-width: 40em; margin: 0 auto; gap: 0.5em; overflow-y: auto; }
-    .db-choice { display: grid; grid-template-columns: auto 1fr; column-gap: 0.6em; align-items: center; padding: 0.5em 0.6em; border: 0.08em solid #2e3543; border-radius: 0.4em; cursor: pointer; font-size: 0.9em; }
+    .db-choice { display: grid; grid-template-columns: auto 1fr; gap: 0 0.6em; align-items: center; padding: 0.5em 0.6em; border: 0.08em solid #2e3543; border-radius: 0.4em; cursor: pointer; font-size: 0.9em; }
     .db-choice:has(input:checked) { border-color: #d12328; }
     .db-choice input { width: 1em; height: 1em; accent-color: #d12328; }
     .db-choice .db-name { font-weight: 800; overflow-wrap: anywhere; }
@@ -144,7 +144,7 @@
       DEFAULT_DISPLAY_LAYOUT, splitFromPointer, nudgeSplit, loadDisplayLayout, saveDisplayLayout, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -737,7 +737,7 @@
       };
 
       const copyText = (text) => {
-        navigator.clipboard.writeText(text).catch(() => alert('Copying failed. Select the text and copy it instead.'));
+        copyToClipboard(text).catch(() => alert('Copying failed. Select the text and copy it instead.'));
       };
 
       const saveCodeFile = () => {

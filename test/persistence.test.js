@@ -36,6 +36,7 @@ const throwingStorage = {
 };
 
 const ID = '11111111-1111-4111-8111-111111111111';
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ID2 = '22222222-2222-4222-8222-222222222222';
 const NOW = new Date('2026-10-17T01:30:00Z');
 const opts = { id: ID, now: NOW };
@@ -65,7 +66,23 @@ describe('createTournamentId', () => {
   });
 
   it('defaults to crypto.randomUUID', () => {
-    assert.match(L.createTournamentId(), /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.match(L.createTournamentId(), UUID_V4);
+  });
+});
+
+describe('randomUuid', () => {
+  it('uses crypto.randomUUID where the browser has it', () => {
+    assert.equal(L.randomUuid({ randomUUID: () => ID }), ID);
+  });
+
+  // Plain-http pages (e.g. http://192.168.0.22) aren't secure contexts, so
+  // browsers leave out crypto.randomUUID. getRandomValues is always there.
+  it('builds a version 4 UUID from getRandomValues on insecure pages', () => {
+    const bytes = { getRandomValues: a => a.fill(0xff) };
+    assert.equal(L.randomUuid(bytes), 'ffffffff-ffff-4fff-bfff-ffffffffffff');
+    const zeros = { getRandomValues: a => a.fill(0) };
+    assert.equal(L.randomUuid(zeros), '00000000-0000-4000-8000-000000000000');
+    assert.match(L.randomUuid({ getRandomValues: a => globalThis.crypto.getRandomValues(a) }), UUID_V4);
   });
 });
 

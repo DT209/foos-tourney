@@ -16,18 +16,23 @@
     "refresh-leaderboard": "node scripts/refresh-leaderboard.js",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test-e2e/*.e2e.js",
     "coverage:ui": "node scripts/ui-coverage.js",
-    "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"c8 --check-coverage --100 --include firebase-remote.js --reports-dir coverage-firebase --reporter text node --test --test-concurrency=1 test-firebase/rules.fb.js test-firebase/remote.fb.js\""
+    "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"c8 --check-coverage --100 --include firebase-remote.js --reports-dir coverage-firebase --reporter text node --test --test-concurrency=1 test-firebase/rules.fb.js test-firebase/remote.fb.js\"",
+    "check:browsers": "eslint -c eslint.compat.config.js --max-warnings 0 tournament-logic.js firebase-remote.js firebase-config.js TournamentManager.html && node scripts/check-css-compat.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "@firebase/rules-unit-testing": "5.0.2",
+    "browserslist": "4.29.3",
     "c8": "^10.1.3",
+    "doiuse": "6.0.6",
     "eslint": "^9.39.5",
+    "eslint-plugin-compat": "7.0.2",
     "eslint-plugin-html": "^8.2.1",
     "eslint-plugin-react": "^7.37.5",
     "firebase": "12.19.0",
     "globals": "^17.13.0",
     "html-validate": "^10.17.0",
+    "postcss": "8.5.30",
     "prettier": "^3.9.10",
     "puppeteer-core": "25.12.0"
   },
@@ -36,5 +41,16 @@
   },
   "overrides": {
     "@grpc/grpc-js": "^1.14.0"
-  }
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 ChromeAndroid versions",
+    "last 2 Edge versions",
+    "last 2 Firefox versions",
+    "last 2 FirefoxAndroid versions",
+    "Firefox ESR",
+    "Safari >= 16",
+    "iOS >= 16",
+    "Samsung >= 20"
+  ]
 }

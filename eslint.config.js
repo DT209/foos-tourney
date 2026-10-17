@@ -4,6 +4,8 @@ const js = require('@eslint/js');
 const globals = require('globals');
 const html = require('eslint-plugin-html');
 const react = require('eslint-plugin-react');
+// The cross-browser rules also run here, so its guarded-use comments count as used.
+const crossBrowser = require('./eslint.compat.config.js');
 
 const quality = {
   'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
@@ -24,7 +26,7 @@ module.exports = [
     rules: quality
   },
   {
-    files: ['test/**/*.js', 'test-firebase/**/*.js', 'scripts/**/*.js', 'eslint.config.js'],
+    files: ['test/**/*.js', 'test-firebase/**/*.js', 'scripts/**/*.js', 'eslint.config.js', 'eslint.compat.config.js'],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } },
     rules: quality
   },
@@ -55,5 +57,6 @@ module.exports = [
       'react/jsx-no-undef': 'error',
       'react/no-unescaped-entities': 'off'
     }
-  }
+  },
+  ...crossBrowser
 ];

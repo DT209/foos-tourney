@@ -12,7 +12,11 @@ require('../firebase-remote.js');
 const logic = globalThis.TournamentLogic;
 const { FirebaseRemote } = globalThis;
 const PROJECT = 'demo-foos-tourney';
-const EMULATORS = { firestore: '127.0.0.1:8080', auth: 'http://127.0.0.1:9099' };
+// emulators:exec publishes the addresses from firebase.json.
+const EMULATORS = {
+  firestore: process.env.FIRESTORE_EMULATOR_HOST,
+  auth: `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}`
+};
 const CODE = 'ABCD2345EFGH';
 const CODE2 = 'ZZZZ2345EFGH';
 

@@ -33,6 +33,7 @@ const {
   parsePublisherCodeFile,
   loadPublishing,
   savePublishing,
+  copyToClipboard,
   remoteTournamentUrl,
   remoteIdFromSearch,
   boardForTournament,
@@ -482,5 +483,28 @@ describe('page decisions', () => {
     saveTournament(storage, state());
     assert.equal(savedTournamentName(storage, ID), 'Week 3');
     assert.equal(savedTournamentName(storage, ID2), '');
+  });
+});
+
+describe('copyToClipboard', () => {
+  it('writes through navigator.clipboard', async () => {
+    const written = [];
+    await copyToClipboard('ABCD', { clipboard: { writeText: async t => written.push(t) } });
+    assert.deepEqual(written, ['ABCD']);
+  });
+
+  it('rejects on plain-http pages, which have no clipboard', async () => {
+    await assert.rejects(copyToClipboard('ABCD', {}), /Clipboard unavailable/);
+  });
+
+  it('defaults to the global navigator', async () => {
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
+    try {
+      await assert.rejects(copyToClipboard('ABCD'), /Clipboard unavailable/);
+    } finally {
+      if (original) Object.defineProperty(globalThis, 'navigator', original);
+      else delete globalThis.navigator;
+    }
   });
 });

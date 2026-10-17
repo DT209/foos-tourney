@@ -29,6 +29,11 @@ when the module's flow changes.
   `firebase-remote.js` (emulator tests). Cover new branches with tests. Don't add `c8 ignore` comments.
 - `npm run build` must pass before committing: ESLint with zero warnings (including the inline JSX),
   Prettier, html-validate, the module contract, coverage, and `npm audit`.
+- The build's cross-browser check fails on APIs or CSS the `browserslist` targets don't support, and on
+  secure-context-only APIs (`crypto.randomUUID`, `navigator.clipboard`, ...), which are missing on
+  plain-http LAN pages. Fix the code. If a use is guarded with a fallback, mark it with
+  `eslint-disable-next-line no-restricted-properties -- guarded: <fallback>`. CSS exceptions go in
+  `IGNORED` in `scripts/check-css-compat.js`, each with a reason.
 - Prettier formats JS, JSON and Markdown. The HTML is excluded on purpose, so don't reformat it wholesale.
 
 ## Testing

@@ -81,6 +81,10 @@ const steps = [
   ['HTML validation (html-validate)', npx('html-validate', 'TournamentManager.html')],
   ['Module contract (HTML imports vs. exports)', checkModuleContract],
   [
+    'Cross-browser check (target browsers, secure-context APIs, CSS)',
+    () => run('npm', ['run', '--silent', 'check:browsers'])
+  ],
+  [
     'Tests + 100% coverage (node:test, c8)',
     npx(
       'c8',

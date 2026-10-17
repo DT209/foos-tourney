@@ -133,14 +133,18 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 2. Prettier format check
 3. html-validate
 4. Module contract: every name the page imports from `TournamentLogic` exists
-5. Unit tests with 100% statement, branch, function and line coverage
-6. UI tests in headless Chrome, covering every control at desktop, tablet and phone widths
-7. UI coverage: every function in the page's UI script (components, handlers, inline callbacks)
+5. Cross-browser check (`npm run check:browsers`): browser APIs and CSS the targets in `package.json`
+   `browserslist` don't support, and APIs that only exist on secure pages (HTTPS or localhost), such as
+   `crypto.randomUUID`, which are missing when the page is opened from a plain-http LAN address. Each
+   finding is a build failure
+6. Unit tests with 100% statement, branch, function and line coverage
+7. UI tests in headless Chrome, covering every control at desktop, tablet and phone widths
+8. UI coverage: every function in the page's UI script (components, handlers, inline callbacks)
    must run in at least one UI test
-8. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
+9. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
    (`--skip-firebase` where Java isn't available)
-9. `npm audit` at high severity (`--skip-audit` when offline)
-10. Copy the four app files to `dist/` byte-for-byte, with a SHA-256 `manifest.json`
+10. `npm audit` at high severity (`--skip-audit` when offline)
+11. Copy the four app files to `dist/` byte-for-byte, with a SHA-256 `manifest.json`
 
 The JavaScript is never transpiled, bundled or minified.
 
