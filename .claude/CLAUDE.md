@@ -91,8 +91,9 @@ when the module's flow changes.
   View.
 - Display Mode renders `DisplayBoard` from `boardForTournament(state)`, for this device's tournament or
   one followed from Firebase. With publishing on it opens on `DisplayPicker` (`initialDisplaySource`): one
-  click on a row shows it, and **Export JSON** on a row downloads the same file Saved Tournaments makes
-  (`publishedExportFile` for published ones). A
+  click on a row shows it. **Export JSON** and **Export CSV** on a row download it without showing it: this
+  device's through `exportTournament`, a published one through `publishedDownload`, which fetches it fresh and
+  returns the stored JSON text unchanged (validated first) or a CSV built from it. A
   window opened with `?display` or `?remote=<id>` must never save or publish: the auto-save and publish
   effects skip it, and it reloads the current tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
   timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only

@@ -40,9 +40,11 @@ const {
   publishStartOutcome,
   takeOverOutcome,
   parsePublishedTournament,
-  publishedExportFile,
-  serializeTournamentExport,
-  tournamentExportFileName,
+  publishedDownload,
+  tournamentCsv,
+  drawMonsterMatch,
+  updateMonsterGameScore,
+  completeMonsterMatch,
   publishResultStatus,
   shouldRetryPublishing,
   initialDisplaySource,
@@ -512,21 +514,46 @@ describe('copyToClipboard', () => {
   });
 });
 
-describe('publishedExportFile', () => {
-  it('is the same file Export JSON in Saved Tournaments makes', () => {
-    const now = new Date(NOW);
-    const published = { exportText: publishedExport(state(), now) };
-    const parsed = parsePublishedTournament(published).tournament;
-    assert.deepEqual(publishedExportFile(published, now), {
-      fileName: tournamentExportFileName(parsed),
-      text: serializeTournamentExport(parsed, now)
-    });
-    assert.equal(publishedExportFile(published, now).fileName, 'Week_3_2026-10-16_11111111.json');
-    assert.equal(JSON.parse(publishedExportFile(published).text).tournament.adminPin, null);
+describe('publishedDownload', () => {
+  // A published tournament with one finished Monster match.
+  function playedState() {
+    const ids = [1, 2, 3, 4];
+    let players = ids.map(id => player(id, `P${id}`));
+    let matches = [];
+    const drawn = drawMonsterMatch({ players, matches, tableCount: 1, format: '2v2', maxGames: 1, id: 500 });
+    players = drawn.players;
+    matches = updateMonsterGameScore(drawn.matches, 500, 0, 't1', 5);
+    matches = updateMonsterGameScore(matches, 500, 0, 't2', 3);
+    const done = completeMonsterMatch(players, matches, 500);
+    return state({ players: done.players, matches: done.matches });
+  }
+
+  it('JSON is the published text exactly as stored, named like Export JSON', () => {
+    const exportText = publishedExport(state(), new Date(NOW));
+    const file = publishedDownload({ exportText }, 'json');
+    assert.equal(file.text, exportText, 'byte for byte, including its exportedAt');
+    assert.equal(file.fileName, 'Week_3_2026-10-16_11111111.json');
+    assert.equal(file.mimeType, 'application/json');
   });
 
-  it('says when the tournament is gone or its data is invalid', () => {
-    assert.deepEqual(publishedExportFile(null), { error: 'That tournament is no longer published.' });
-    assert.match(publishedExportFile({ exportText: '{}' }).error, /isn't a Foos Tourney tournament export/);
+  it('CSV is built from the published structure, like Export CSV', () => {
+    const published = playedState();
+    const file = publishedDownload({ exportText: publishedExport(published) }, 'csv');
+    const expected = tournamentCsv(parsePublishedTournament({ exportText: publishedExport(published) }).tournament);
+    assert.deepEqual(file, { fileName: expected.fileName, text: expected.text, mimeType: 'text/csv' });
+    assert.match(file.text, /_MONSTER-500",2026-10-16,1,5,3,/);
+  });
+
+  it('says when there are no results for a CSV yet', () => {
+    assert.deepEqual(publishedDownload({ exportText: publishedExport(state()) }, 'csv'), {
+      error: 'No completed match data available to export yet.'
+    });
+  });
+
+  it('says when the tournament is gone or its data is invalid, for either format', () => {
+    for (const format of ['json', 'csv']) {
+      assert.deepEqual(publishedDownload(null, format), { error: 'That tournament is no longer published.' });
+      assert.match(publishedDownload({ exportText: '{}' }, format).error, /isn't a Foos Tourney tournament export/);
+    }
   });
 });

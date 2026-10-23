@@ -154,7 +154,7 @@
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
       copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
-      parsePublishedTournament, publishedExportFile, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
+      parsePublishedTournament, publishedDownload, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
     // Publishing to Firebase: null unless firebase-config.js holds a config.
@@ -467,7 +467,8 @@
 
     // Display Mode's first screen when publishing is set up: this device's
     // tournament, then the published ones. One click on a row (or its Show
-    // button) shows it; Export JSON downloads it without showing it. Focus
+    // button) shows it; Export JSON and Export CSV download it without
+    // showing it (a published one as Firebase holds it right now). Focus
     // starts on this device's Show, so Enter or a TV remote's OK puts it up.
     function DisplayPicker({ choices, loading, unavailable, onShow, onExport, onExit }) {
       return (
@@ -487,11 +488,20 @@
                 </div>
                 <div className="db-actions">
                   <button
-                    data-testid="display-choice-export"
+                    data-testid="display-choice-export-json"
                     className="db-btn"
-                    onClick={(e) => { e.stopPropagation(); onExport(c); }}
+                    title="The full tournament, for importing"
+                    onClick={(e) => { e.stopPropagation(); onExport(c, 'json'); }}
                   >
                     Export JSON
+                  </button>
+                  <button
+                    data-testid="display-choice-export-csv"
+                    className="db-btn"
+                    title="Match results for spreadsheets"
+                    onClick={(e) => { e.stopPropagation(); onExport(c, 'csv'); }}
+                  >
+                    Export CSV
                   </button>
                   <button
                     data-testid="display-choice-show"
@@ -1030,22 +1040,22 @@
         downloadText(csv.text, csv.fileName, 'text/csv');
       };
 
-      // Display Mode list: Export JSON for a published tournament, the same
-      // file Saved Tournaments' Export JSON makes.
-      const exportPublished = (id) => {
+      // Display Mode list: a published tournament's JSON exactly as Firebase
+      // holds it, or its results CSV built from that JSON. format: 'json' or 'csv'.
+      const exportPublished = (id, format) => {
         remote.fetchTournament(id).then(published => {
-          const file = publishedExportFile(published);
+          const file = publishedDownload(published, format);
           if (file.error) {
             alert(file.error);
             return;
           }
-          downloadText(file.text, file.fileName, 'application/json');
+          downloadText(file.text, file.fileName, file.mimeType);
         }, () => alert("Can't reach Firebase right now."));
       };
 
-      const exportChoice = (choice) => {
-        if (choice.source === 'local') exportTournament(tournamentId, 'json');
-        else exportPublished(choice.id);
+      const exportChoice = (choice, format) => {
+        if (choice.source === 'local') exportTournament(tournamentId, format);
+        else exportPublished(choice.id, format);
       };
 
       const handleImportFile = (e) => {

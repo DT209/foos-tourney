@@ -2460,16 +2460,24 @@ globalThis.TournamentLogic = (() => {
     return parseTournamentExport(remote.exportText);
   }
 
-  // A published tournament as a download, exactly like Export JSON in Saved
-  // Tournaments: { fileName, text }, or { error } when it is gone or invalid.
-  function publishedExportFile(remote, now = new Date()) {
+  // A published tournament as a download, validated like an import first:
+  // 'json' is the published Export JSON text exactly as stored; 'csv' is the
+  // results file built from that same structure, like Export CSV in Saved
+  // Tournaments. Returns { fileName, text, mimeType } or { error }.
+  function publishedDownload(remote, format) {
     const parsed = parsePublishedTournament(remote);
     if (parsed.gone) return { error: 'That tournament is no longer published.' };
     if (parsed.error) return { error: parsed.error };
-    return {
-      fileName: tournamentExportFileName(parsed.tournament),
-      text: serializeTournamentExport(parsed.tournament, now)
-    };
+    if (format === 'json') {
+      return {
+        fileName: tournamentExportFileName(parsed.tournament),
+        text: remote.exportText,
+        mimeType: 'application/json'
+      };
+    }
+    const csv = tournamentCsv(parsed.tournament);
+    if (!csv) return { error: 'No completed match data available to export yet.' };
+    return { fileName: csv.fileName, text: csv.text, mimeType: 'text/csv' };
   }
 
   // Status after a published change: live, or moved when another browser
@@ -2687,7 +2695,7 @@ globalThis.TournamentLogic = (() => {
     publishStartOutcome,
     takeOverOutcome,
     parsePublishedTournament,
-    publishedExportFile,
+    publishedDownload,
     publishResultStatus,
     shouldRetryPublishing,
     initialDisplaySource,

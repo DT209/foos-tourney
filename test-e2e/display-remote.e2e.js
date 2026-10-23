@@ -39,16 +39,25 @@ const choices = (page = app.page) =>
   );
 const ROW = source => `[data-testid="display-choice"][data-source="${source}"]`;
 
-// Publishes "Other Night" from another browser, with one player, as the fake server.
-async function publishOther({ name = 'Other Night', player = 'Zed', page = app.page } = {}) {
+// Publishes "Other Night" from another browser, with one player, as the fake
+// server. played: four players and one finished Monster match, for CSVs.
+async function publishOther({ name = 'Other Night', player = 'Zed', played = false, page = app.page } = {}) {
   await page.evaluate(
-    (id, name, player) => {
+    (id, name, player, played) => {
       const L = window.TournamentLogic;
-      const state = {
+      let state = {
         ...L.newTournamentState(id, new Date()),
         tournamentName: name,
         players: [L.createPlayer(1, player)]
       };
+      if (played) {
+        const players = [1, 2, 3, 4].map(n => L.createPlayer(n, `${player}${n}`));
+        const drawn = L.drawMonsterMatch({ players, matches: [], tableCount: 1, format: '2v2', maxGames: 1, id: 7 });
+        let matches = L.updateMonsterGameScore(drawn.matches, 7, 0, 't1', 5);
+        matches = L.updateMonsterGameScore(matches, 7, 0, 't2', 2);
+        const done = L.completeMonsterMatch(drawn.players, matches, 7);
+        state = { ...state, players: done.players, matches: done.matches };
+      }
       const server = JSON.parse(localStorage.getItem('__fakeRemote.server') || 'null') || {
         slots: [null, null, null, null, null],
         tournaments: {},
@@ -70,7 +79,8 @@ async function publishOther({ name = 'Other Night', player = 'Zed', page = app.p
     },
     OTHER_ID,
     name,
-    player
+    player,
+    played
   );
 }
 
@@ -81,17 +91,22 @@ const clickRow = async (source, page = app.page) => {
 };
 
 // Waits for the download a click started (remote exports fetch first).
-async function downloadFrom(source) {
+// format: 'json' or 'csv'.
+async function downloadFrom(source, format = 'json') {
   await app.page.evaluate(() => {
     window.__download = null;
     HTMLAnchorElement.prototype.click = function () {
       window.__download = { href: this.getAttribute('href'), name: this.getAttribute('download') };
     };
   });
-  await app.page.$eval(`${ROW(source)} [data-testid="display-choice-export"]`, b => b.click());
+  await app.page.$eval(`${ROW(source)} [data-testid="display-choice-export-${format}"]`, b => b.click());
   await waitFor(() => app.page.evaluate(() => window.__download !== null));
   const { href, name } = await app.page.evaluate(() => window.__download);
-  return { name, text: decodeURIComponent(href.slice(href.indexOf(',') + 1)) };
+  return {
+    name,
+    mimeType: href.slice(5, href.indexOf(';')),
+    text: decodeURIComponent(href.slice(href.indexOf(',') + 1))
+  };
 }
 
 describe('the Display Mode list', () => {
@@ -230,13 +245,29 @@ describe('exporting from the Display Mode list', () => {
     assert.deepEqual(JSON.parse(file.text).tournament, JSON.parse(saved.text).tournament);
   });
 
-  it('Export JSON downloads a published tournament as a standard export', async () => {
+  it("Export CSV downloads this device's results like Saved Tournaments does", async () => {
+    app = await openApp({ remote: true });
+    await app.addAllLeaderboardPlayers();
+    await app.playMonsterMatch();
+    await app.click('Display Mode');
+    await waitFor(async () => (await choices()).length === 1);
+    const file = await downloadFrom('local', 'csv');
+    assert.ok(await app.page.$(PICKER), 'still on the list');
+    await app.click('Exit Display');
+    const saved = await app.exportFromSaved('CSV');
+    assert.deepEqual(file, saved);
+  });
+
+  it('Export JSON downloads the published JSON exactly as Firebase holds it', async () => {
     app = await openApp({ remote: true });
     await publishOther();
     await app.click('Display Mode');
     await waitFor(async () => (await choices()).length === 2);
     const file = await downloadFrom('remote');
     assert.ok(await app.page.$(PICKER), 'still on the list');
+    const stored = (await app.remoteServer()).tournaments[OTHER_ID].exportText;
+    assert.equal(file.text, stored, 'byte for byte, not rebuilt');
+    assert.equal(file.mimeType, 'application/json');
     assert.match(file.name, /^Other_Night_\d{4}-\d{2}-\d{2}_99999999\.json$/);
     const parsed = await app.page.evaluate(t => window.TournamentLogic.parseTournamentExport(t), file.text);
     assert.equal(parsed.tournament.tournamentId, OTHER_ID);
@@ -247,17 +278,37 @@ describe('exporting from the Display Mode list', () => {
     assert.ok((await app.remoteCalls()).some(c => c.method === 'fetchTournament' && c.id === OTHER_ID));
   });
 
+  it('Export CSV builds the results from the published JSON', async () => {
+    app = await openApp({ remote: true });
+    await publishOther({ played: true });
+    await app.click('Display Mode');
+    await waitFor(async () => (await choices()).length === 2);
+    const file = await downloadFrom('remote', 'csv');
+    assert.ok(await app.page.$(PICKER), 'still on the list');
+    const expected = await app.page.evaluate(id => {
+      const L = window.TournamentLogic;
+      const server = JSON.parse(localStorage.getItem('__fakeRemote.server'));
+      return L.tournamentCsv(L.parseTournamentExport(server.tournaments[id].exportText).tournament);
+    }, OTHER_ID);
+    assert.equal(file.text, expected.text);
+    assert.equal(file.name, expected.fileName);
+    assert.equal(file.mimeType, 'text/csv');
+    assert.match(file.text, /_MONSTER-7",\d{4}-\d{2}-\d{2},1,5,2,/);
+  });
+
   it('says when a published tournament is gone, unreachable or invalid', async () => {
     app = await openApp({ remote: true });
     await publishOther();
     await app.click('Display Mode');
     await waitFor(async () => (await choices()).length === 2);
-    const exportRemote = async () => {
+    const exportRemote = async (format = 'json') => {
       const before = app.dialogs.length;
-      await app.page.$eval(`${ROW('remote')} [data-testid="display-choice-export"]`, b => b.click());
+      await app.page.$eval(`${ROW('remote')} [data-testid="display-choice-export-${format}"]`, b => b.click());
       await waitFor(async () => app.dialogs.length > before);
       return app.dialogs.at(-1);
     };
+
+    assert.match(await exportRemote('csv'), /No completed match data available to export yet/);
 
     await app.page.evaluate(id => {
       const server = JSON.parse(localStorage.getItem('__fakeRemote.server'));
@@ -265,6 +316,7 @@ describe('exporting from the Display Mode list', () => {
       localStorage.setItem('__fakeRemote.server', JSON.stringify(server));
     }, OTHER_ID);
     assert.match(await exportRemote(), /isn't a Foos Tourney tournament export/);
+    assert.match(await exportRemote('csv'), /isn't a Foos Tourney tournament export/);
 
     await app.page.evaluate(() => localStorage.removeItem('__fakeRemote.server'));
     assert.match(await exportRemote(), /no longer published/);

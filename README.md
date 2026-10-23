@@ -269,8 +269,10 @@ publishing it only follows tournaments on the same computer. **Exit Display** re
 
 When publishing is set up, Display Mode and second-screen windows first show a list: **This device**
 first, then the tournaments published from any device, which are followed live. One click on a row
-shows it. Each row also has **Show** and **Export JSON**, which downloads that tournament the same way
-Export JSON in Saved Tournaments does, without showing it. Focus starts on this device's **Show**, so
+shows it. Each row also has **Show**, **Export JSON** and **Export CSV**, which download that tournament
+without showing it. For this device they make the same files as Saved Tournaments. For a published
+tournament they fetch it from Firebase at that moment: **Export JSON** saves the published JSON exactly as
+Firebase holds it, and **Export CSV** builds the match results from that same JSON. Focus starts on this device's **Show**, so
 Enter or a TV remote's OK puts the local board up straight away. **Switch tournament** returns to the
 list. A viewer link
 (`?remote=<id>`) opens straight to a published tournament on any phone or TV.
@@ -280,7 +282,7 @@ flowchart TD
     DESK["Control desk: score matches"] -->|"Display Mode"| PICK{"Choose a tournament"}
     PICK -->|"click This device, or Enter: its Show has focus"| BOARD["Board: tables on top, leaderboard and history below"]
     PICK -->|"click a published tournament"| LIVE["Board followed live from Firebase"]
-    PICK -->|"Export JSON on a row"| FILE["Download: same file as Saved Tournaments' Export JSON"]
+    PICK -->|"Export JSON or Export CSV on a row"| FILE["Download: published JSON as stored, or results CSV built from it"]
     BOARD -->|"Layout button"| ARR["Tables on top, Tables left or Stacked"]
     BOARD -->|"drag, or arrow keys on a handle (TV remote)"| SIZE["Height and width splits"]
     ARR --> PREF[("Layout preference in this browser")]

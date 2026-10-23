@@ -220,7 +220,8 @@ first shows a list to pick from. **This device** is selected by default:
   Screen** and **Exit Display**.
 - Second-screen windows show the same list. Focus starts on **This device**'s **Show**, so pressing
   Enter (or a TV remote's OK) puts the local board up, as today. One click on any row shows it, and each
-  row has **Export JSON**. Any published tournament can be picked instead, and
+  row has **Export JSON** (the published JSON exactly as stored) and **Export CSV** (results built from it).
+  Any published tournament can be picked instead, and
   **Switch tournament** works there too. A second-screen window following a published tournament reads
   it from Firebase, not from this computer's storage.
 - `?remote=<id>` links skip the list and open straight to that published tournament.
