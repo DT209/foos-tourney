@@ -27,10 +27,17 @@ const waitFor = async (check, ms = 5000) => {
   }
 };
 
+// Each row, and whether its Show button has focus (where Enter or a TV
+// remote's OK lands when the list opens).
 const choices = (page = app.page) =>
   page.$$eval('[data-testid="display-choice"]', els =>
-    els.map(e => ({ source: e.dataset.source, text: e.textContent, checked: e.querySelector('input').checked }))
+    els.map(e => ({
+      source: e.dataset.source,
+      text: e.querySelector('.db-choice-text').textContent,
+      focused: document.activeElement === e.querySelector('[data-testid="display-choice-show"]')
+    }))
   );
+const ROW = source => `[data-testid="display-choice"][data-source="${source}"]`;
 
 // Publishes "Other Night" from another browser, with one player, as the fake server.
 async function publishOther({ name = 'Other Night', player = 'Zed', page = app.page } = {}) {
@@ -67,13 +74,28 @@ async function publishOther({ name = 'Other Night', player = 'Zed', page = app.p
   );
 }
 
-const show = async (page = app.page) => {
-  await page.evaluate(sel => document.querySelector(sel).querySelector('form').requestSubmit(), PICKER);
+// One click on a row's name shows it.
+const clickRow = async (source, page = app.page) => {
+  await page.$eval(`${ROW(source)} .db-name`, e => e.click());
   await app.pause(100);
 };
 
+// Waits for the download a click started (remote exports fetch first).
+async function downloadFrom(source) {
+  await app.page.evaluate(() => {
+    window.__download = null;
+    HTMLAnchorElement.prototype.click = function () {
+      window.__download = { href: this.getAttribute('href'), name: this.getAttribute('download') };
+    };
+  });
+  await app.page.$eval(`${ROW(source)} [data-testid="display-choice-export"]`, b => b.click());
+  await waitFor(() => app.page.evaluate(() => window.__download !== null));
+  const { href, name } = await app.page.evaluate(() => window.__download);
+  return { name, text: decodeURIComponent(href.slice(href.indexOf(',') + 1)) };
+}
+
 describe('the Display Mode list', () => {
-  it('lists this device first and selected, then published tournaments; Show puts this device up', async () => {
+  it('lists this device first with its Show focused, then published tournaments; one click shows', async () => {
     app = await openApp({ remote: true });
     await publishOther();
     await app.click('Display Mode');
@@ -81,13 +103,17 @@ describe('the Display Mode list', () => {
     const [local, other] = await choices();
     assert.equal(local.source, 'local');
     assert.match(local.text, /This device.*Thursday DYP/);
-    assert.equal(local.checked, true);
+    assert.equal(local.focused, true);
     assert.equal(other.source, 'remote');
     assert.match(other.text, /Other Night.*Updated/);
-    await show();
+    assert.equal(await app.page.$(`${PICKER} button[type="submit"]`), null, 'no Show button at the bottom');
+    await clickRow('local');
     assert.match(await app.textOf(BOARD), /Thursday DYP/);
     await app.click('Switch tournament');
     assert.ok(await app.page.$(PICKER));
+    await app.click('Show', { within: ROW('local') });
+    assert.match(await app.textOf(BOARD), /Thursday DYP/, "the row's Show button too");
+    await app.click('Switch tournament');
     await app.click('Exit Display');
     assert.equal(await app.page.$(PICKER), null);
   });
@@ -111,7 +137,7 @@ describe('the Display Mode list', () => {
     await app.click('Display Mode');
     await waitFor(async () => /can't be reached/.test(await app.textOf(PICKER)));
     assert.equal((await choices()).length, 1);
-    await show();
+    await clickRow('local');
     assert.match(await app.textOf(BOARD), /Thursday DYP/);
   });
 });
@@ -122,8 +148,7 @@ describe('following a published tournament', () => {
     await publishOther();
     await app.click('Display Mode');
     await waitFor(async () => (await choices()).length === 2);
-    await app.page.$$eval('[data-testid="display-choice"] input', inputs => inputs[1].click());
-    await show();
+    await clickRow('remote');
     await waitFor(async () => Boolean(await app.page.$(BOARD)));
     assert.match(await app.textOf(BOARD), /Other Night/);
     assert.match(await app.textOf('[data-testid="display-standings"]'), /Zed/);
@@ -191,8 +216,67 @@ describe('following a published tournament', () => {
   });
 });
 
+describe('exporting from the Display Mode list', () => {
+  it("Export JSON downloads this device's tournament like Saved Tournaments does, without showing it", async () => {
+    app = await openApp({ remote: true });
+    await publishOther();
+    await app.click('Display Mode');
+    await waitFor(async () => (await choices()).length === 2);
+    const file = await downloadFrom('local');
+    assert.ok(await app.page.$(PICKER), 'still on the list');
+    await app.click('Exit Display');
+    const saved = await app.exportFromSaved('JSON');
+    assert.equal(file.name, saved.name);
+    assert.deepEqual(JSON.parse(file.text).tournament, JSON.parse(saved.text).tournament);
+  });
+
+  it('Export JSON downloads a published tournament as a standard export', async () => {
+    app = await openApp({ remote: true });
+    await publishOther();
+    await app.click('Display Mode');
+    await waitFor(async () => (await choices()).length === 2);
+    const file = await downloadFrom('remote');
+    assert.ok(await app.page.$(PICKER), 'still on the list');
+    assert.match(file.name, /^Other_Night_\d{4}-\d{2}-\d{2}_99999999\.json$/);
+    const parsed = await app.page.evaluate(t => window.TournamentLogic.parseTournamentExport(t), file.text);
+    assert.equal(parsed.tournament.tournamentId, OTHER_ID);
+    assert.deepEqual(
+      parsed.tournament.players.map(p => p.name),
+      ['Zed']
+    );
+    assert.ok((await app.remoteCalls()).some(c => c.method === 'fetchTournament' && c.id === OTHER_ID));
+  });
+
+  it('says when a published tournament is gone, unreachable or invalid', async () => {
+    app = await openApp({ remote: true });
+    await publishOther();
+    await app.click('Display Mode');
+    await waitFor(async () => (await choices()).length === 2);
+    const exportRemote = async () => {
+      const before = app.dialogs.length;
+      await app.page.$eval(`${ROW('remote')} [data-testid="display-choice-export"]`, b => b.click());
+      await waitFor(async () => app.dialogs.length > before);
+      return app.dialogs.at(-1);
+    };
+
+    await app.page.evaluate(id => {
+      const server = JSON.parse(localStorage.getItem('__fakeRemote.server'));
+      server.tournaments[id].exportText = '{}';
+      localStorage.setItem('__fakeRemote.server', JSON.stringify(server));
+    }, OTHER_ID);
+    assert.match(await exportRemote(), /isn't a Foos Tourney tournament export/);
+
+    await app.page.evaluate(() => localStorage.removeItem('__fakeRemote.server'));
+    assert.match(await exportRemote(), /no longer published/);
+
+    await app.setRemoteConfig({ unavailable: true });
+    assert.match(await exportRemote(), /Can't reach Firebase/);
+    assert.ok(await app.page.$(PICKER), 'still on the list');
+  });
+});
+
 describe('second-screen windows', () => {
-  it('show the same list with this device selected; Show puts the local board up', async () => {
+  it("show the same list; Enter (a TV remote's OK) on the focused Show puts the local board up", async () => {
     app = await openApp({ remote: true });
     await publishOther();
     const screen = await app.openPage('?display=1');
@@ -200,13 +284,14 @@ describe('second-screen windows', () => {
     await new Promise(r => setTimeout(r, 100));
     const listed = await choices(screen);
     assert.deepEqual(
-      listed.map(c => [c.source, c.checked]),
+      listed.map(c => [c.source, c.focused]),
       [
         ['local', true],
         ['remote', false]
       ]
     );
-    await show(screen);
+    await screen.keyboard.press('Enter');
+    await new Promise(r => setTimeout(r, 100));
     assert.match(await screen.$eval(BOARD, e => e.textContent), /Thursday DYP/);
   });
 });

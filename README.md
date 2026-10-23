@@ -268,15 +268,19 @@ can be moved to a TV. It updates as you score on the control desk and never save
 publishing it only follows tournaments on the same computer. **Exit Display** returns to the control desk.
 
 When publishing is set up, Display Mode and second-screen windows first show a list: **This device**
-(selected, so **Show** or Enter puts it up as before) and the tournaments published from any device,
-which are followed live. **Switch tournament** returns to the list. A viewer link
+first, then the tournaments published from any device, which are followed live. One click on a row
+shows it. Each row also has **Show** and **Export JSON**, which downloads that tournament the same way
+Export JSON in Saved Tournaments does, without showing it. Focus starts on this device's **Show**, so
+Enter or a TV remote's OK puts the local board up straight away. **Switch tournament** returns to the
+list. A viewer link
 (`?remote=<id>`) opens straight to a published tournament on any phone or TV.
 
 ```mermaid
 flowchart TD
     DESK["Control desk: score matches"] -->|"Display Mode"| PICK{"Choose a tournament"}
-    PICK -->|"This device (default)"| BOARD["Board: tables on top, leaderboard and history below"]
-    PICK -->|"a published tournament"| LIVE["Board followed live from Firebase"]
+    PICK -->|"click This device, or Enter: its Show has focus"| BOARD["Board: tables on top, leaderboard and history below"]
+    PICK -->|"click a published tournament"| LIVE["Board followed live from Firebase"]
+    PICK -->|"Export JSON on a row"| FILE["Download: same file as Saved Tournaments' Export JSON"]
     BOARD -->|"Layout button"| ARR["Tables on top, Tables left or Stacked"]
     BOARD -->|"drag, or arrow keys on a handle (TV remote)"| SIZE["Height and width splits"]
     ARR --> PREF[("Layout preference in this browser")]

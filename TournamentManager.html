@@ -98,18 +98,21 @@
     .db-match .db-stage { color: #9ca3af; font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.06em; }
     .db-match .db-winner { color: #34d399; font-weight: 800; }
     .db-empty { font-size: 0.75em; color: #6b7280; font-style: italic; }
-    .db-pick { width: 100%; max-width: 40em; margin: 0 auto; gap: 0.5em; overflow-y: auto; }
-    .db-choice { display: grid; grid-template-columns: auto 1fr; gap: 0 0.6em; align-items: center; padding: 0.5em 0.6em; border: 0.08em solid #2e3543; border-radius: 0.4em; cursor: pointer; font-size: 0.9em; }
-    .db-choice:has(input:checked) { border-color: #d12328; }
-    .db-choice input { width: 1em; height: 1em; accent-color: #d12328; }
+    .db-pick { width: 100%; max-width: 48em; margin: 0 auto; gap: 0.5em; overflow-y: auto; list-style: none; }
+    .db-choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.4em 0.8em; align-items: center; padding: 0.5em 0.6em; border: 0.08em solid #2e3543; border-radius: 0.4em; cursor: pointer; font-size: 0.9em; }
+    .db-choice:hover, .db-choice:focus-within { border-color: #d12328; }
+    .db-choice-text { display: flex; flex-direction: column; min-width: 0; }
     .db-choice .db-name { font-weight: 800; overflow-wrap: anywhere; }
-    .db-choice .db-muted { grid-column: 2; font-size: 0.75em; color: #9ca3af; }
+    .db-choice .db-muted { font-size: 0.75em; color: #9ca3af; }
+    .db-choice .db-actions { flex-wrap: wrap; justify-content: flex-end; }
     /* Phones: tables, then leaderboard, then history, whatever the arrangement. */
     @media (max-width: 48em) {
       .db { height: auto; min-height: 100vh; overflow: visible; }
       .db-grid[data-arrangement] { display: flex; flex-direction: column; gap: 0.6em; }
       .db-grid[data-arrangement] .db-side { flex-direction: column; gap: 0.6em; }
       .db-split, .db-layout-btn { display: none; }
+      .db-choice { grid-template-columns: minmax(0, 1fr); }
+      .db-choice .db-actions { justify-content: flex-start; }
       .db-standings, .db-history { flex: none; }
       .db-panel { max-height: 70vh; }
       .db-tables { max-height: none; }
@@ -151,7 +154,7 @@
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
       copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
-      parsePublishedTournament, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
+      parsePublishedTournament, publishedExportFile, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
     // Publishing to Firebase: null unless firebase-config.js holds a config.
@@ -463,14 +466,10 @@
     }
 
     // Display Mode's first screen when publishing is set up: this device's
-    // tournament (selected by default, so Show or Enter puts it up) and the
-    // published ones.
-    function DisplayPicker({ choices, loading, unavailable, onShow, onExit }) {
-      const [selected, setSelected] = useState('local');
-      const show = (e) => {
-        e.preventDefault();
-        onShow(choices.find(c => c.key === selected));
-      };
+    // tournament, then the published ones. One click on a row (or its Show
+    // button) shows it; Export JSON downloads it without showing it. Focus
+    // starts on this device's Show, so Enter or a TV remote's OK puts it up.
+    function DisplayPicker({ choices, loading, unavailable, onShow, onExport, onExit }) {
       return (
         <div data-testid="display-picker" className="db">
           <div className="db-head">
@@ -479,18 +478,35 @@
               <button className="db-btn" onClick={onExit}>Exit Display</button>
             </div>
           </div>
-          <form className="db-panel db-pick" onSubmit={show}>
-            {choices.map(c => (
-              <label key={c.key} data-testid="display-choice" data-source={c.source} className="db-choice">
-                <input type="radio" name="display-choice" value={c.key} checked={selected === c.key} onChange={() => setSelected(c.key)} />
-                <span className="db-name">{c.source === 'local' ? 'This device' : c.name}</span>
-                <span className="db-muted">{c.source === 'local' ? c.name : `Updated ${formatStartedAt(c.updatedAt)}`}</span>
-              </label>
+          <ul className="db-panel db-pick">
+            {choices.map((c, i) => (
+              <li key={c.key} data-testid="display-choice" data-source={c.source} className="db-choice" onClick={() => onShow(c)}>
+                <div className="db-choice-text">
+                  <span className="db-name">{c.source === 'local' ? 'This device' : c.name}</span>
+                  <span className="db-muted">{c.source === 'local' ? c.name : `Updated ${formatStartedAt(c.updatedAt)}`}</span>
+                </div>
+                <div className="db-actions">
+                  <button
+                    data-testid="display-choice-export"
+                    className="db-btn"
+                    onClick={(e) => { e.stopPropagation(); onExport(c); }}
+                  >
+                    Export JSON
+                  </button>
+                  <button
+                    data-testid="display-choice-show"
+                    className="db-btn"
+                    autoFocus={i === 0}
+                    onClick={(e) => { e.stopPropagation(); onShow(c); }}
+                  >
+                    Show
+                  </button>
+                </div>
+              </li>
             ))}
-            {loading && <div className="db-empty">Looking for published tournaments…</div>}
-            {unavailable && <div className="db-empty">Published tournaments can't be reached right now. This device still works.</div>}
-            <div><button type="submit" className="db-btn">Show</button></div>
-          </form>
+            {loading && <li className="db-empty">Looking for published tournaments…</li>}
+            {unavailable && <li className="db-empty">Published tournaments can't be reached right now. This device still works.</li>}
+          </ul>
         </div>
       );
     }
@@ -1014,6 +1030,24 @@
         downloadText(csv.text, csv.fileName, 'text/csv');
       };
 
+      // Display Mode list: Export JSON for a published tournament, the same
+      // file Saved Tournaments' Export JSON makes.
+      const exportPublished = (id) => {
+        remote.fetchTournament(id).then(published => {
+          const file = publishedExportFile(published);
+          if (file.error) {
+            alert(file.error);
+            return;
+          }
+          downloadText(file.text, file.fileName, 'application/json');
+        }, () => alert("Can't reach Firebase right now."));
+      };
+
+      const exportChoice = (choice) => {
+        if (choice.source === 'local') exportTournament(tournamentId, 'json');
+        else exportPublished(choice.id);
+      };
+
       const handleImportFile = (e) => {
         const file = e.target.files[0];
         e.target.value = ''; // lets the same file be chosen again
@@ -1208,6 +1242,7 @@
               loading={displayList.loading}
               unavailable={displayList.unavailable}
               onShow={setDisplaySource}
+              onExport={exportChoice}
               onExit={exitDisplay}
             />
           );

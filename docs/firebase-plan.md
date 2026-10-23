@@ -218,8 +218,9 @@ first shows a list to pick from. **This device** is selected by default:
   picking it works as today.
 - The board's header gets **Switch tournament** to return to the list, next to **Open on Another
   Screen** and **Exit Display**.
-- Second-screen windows show the same list with **This device** selected, so pressing **Show** (or
-  Enter) puts the local board up, as today. Any published tournament can be picked instead, and
+- Second-screen windows show the same list. Focus starts on **This device**'s **Show**, so pressing
+  Enter (or a TV remote's OK) puts the local board up, as today. One click on any row shows it, and each
+  row has **Export JSON**. Any published tournament can be picked instead, and
   **Switch tournament** works there too. A second-screen window following a published tournament reads
   it from Firebase, not from this computer's storage.
 - `?remote=<id>` links skip the list and open straight to that published tournament.

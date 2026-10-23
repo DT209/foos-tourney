@@ -40,6 +40,9 @@ const {
   publishStartOutcome,
   takeOverOutcome,
   parsePublishedTournament,
+  publishedExportFile,
+  serializeTournamentExport,
+  tournamentExportFileName,
   publishResultStatus,
   shouldRetryPublishing,
   initialDisplaySource,
@@ -506,5 +509,24 @@ describe('copyToClipboard', () => {
       if (original) Object.defineProperty(globalThis, 'navigator', original);
       else delete globalThis.navigator;
     }
+  });
+});
+
+describe('publishedExportFile', () => {
+  it('is the same file Export JSON in Saved Tournaments makes', () => {
+    const now = new Date(NOW);
+    const published = { exportText: publishedExport(state(), now) };
+    const parsed = parsePublishedTournament(published).tournament;
+    assert.deepEqual(publishedExportFile(published, now), {
+      fileName: tournamentExportFileName(parsed),
+      text: serializeTournamentExport(parsed, now)
+    });
+    assert.equal(publishedExportFile(published, now).fileName, 'Week_3_2026-10-16_11111111.json');
+    assert.equal(JSON.parse(publishedExportFile(published).text).tournament.adminPin, null);
+  });
+
+  it('says when the tournament is gone or its data is invalid', () => {
+    assert.deepEqual(publishedExportFile(null), { error: 'That tournament is no longer published.' });
+    assert.match(publishedExportFile({ exportText: '{}' }).error, /isn't a Foos Tourney tournament export/);
   });
 });
