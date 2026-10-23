@@ -32,6 +32,8 @@
 
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- QR codes for viewer links: qrcode-generator (MIT), pinned with its hash -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js" integrity="sha384-e9EFD6BGC90bkW9aDV5xbbBfzwN7G8YImHao2lfLVKV/hPB0E0go+H3I64h7oHtA" crossorigin="anonymous"></script>
   <script>
     tailwind.config = {
       theme: {
@@ -61,6 +63,8 @@
     .db-actions { display: flex; gap: 0.4em; }
     .db-btn { font-size: 0.65em; padding: 0.5em 0.9em; border-radius: 0.4em; border: 0.08em solid #2e3543; background: #181b22; color: #e5e7eb; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
     .db-btn:hover { border-color: #d12328; }
+    .db-icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.35em 0.55em; }
+    .db-icon { width: 1.5em; height: 1.5em; display: block; }
     .db-grid { flex: 1; min-height: 0; display: grid; }
     .db-grid[data-arrangement="left"] { grid-template-columns: minmax(0, var(--db-tables)) 0.7em minmax(0, var(--db-rest)); }
     .db-grid[data-arrangement="top"], .db-grid[data-arrangement="stacked"] { grid-template-rows: minmax(0, var(--db-tables)) 0.7em minmax(0, var(--db-rest)); }
@@ -105,6 +109,15 @@
     .db-choice .db-name { font-weight: 800; overflow-wrap: anywhere; }
     .db-choice .db-muted { font-size: 0.75em; color: #9ca3af; }
     .db-choice .db-actions { flex-wrap: wrap; justify-content: flex-end; }
+    /* QR dialog: the code takes 80% of the screen's smaller side, so it fits any screen. */
+    .db-qr { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2vmin; padding: 2vmin; box-sizing: border-box; background: #0e1015; color: #f3f4f6; font-size: clamp(14px, calc(0.9vw + 0.9vh), 64px); text-align: center; }
+    .db-qr-title { font-size: 1.4em; font-weight: 900; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.1; max-width: 90vw; overflow-wrap: anywhere; }
+    .db-qr-sub { font-size: 0.7em; color: #9ca3af; }
+    .db-qr-code { width: 80vmin; height: 80vmin; flex: none; }
+    .db-qr-url { font-size: 0.6em; color: #9ca3af; font-family: Menlo, Consolas, "Liberation Mono", monospace; max-width: 90vw; overflow-wrap: anywhere; }
+    .db-qr-warn { font-size: 0.65em; color: #fbbf24; max-width: 90vw; }
+    .db-qr-close { position: absolute; top: 2vmin; right: 2vmin; }
+
     /* Phones: tables, then leaderboard, then history, whatever the arrangement. */
     @media (max-width: 48em) {
       .db { height: auto; min-height: 100vh; overflow: visible; }
@@ -154,7 +167,7 @@
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
       copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
-      parsePublishedTournament, publishedDownload, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
+      parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
     // Publishing to Firebase: null unless firebase-config.js holds a config.
@@ -350,7 +363,9 @@
       );
     }
 
-    function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, layout, onLayoutChange }) {
+    // qrAvailable: whether the shown tournament has a viewer link; without one
+    // there is no QR code button.
+    function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, onQr, qrAvailable, layout, onLayoutChange }) {
       const gridRef = useRef(null);
       const sideRef = useRef(null);
       const directions = splitDirections(layout.arrangement);
@@ -362,6 +377,17 @@
               <div className="db-sub">Started {started}</div>
             </div>
             <div className="db-actions">
+              {qrAvailable && (
+                <button
+                  data-testid="board-qr-button"
+                  className="db-btn db-icon-btn"
+                  aria-label="Show QR code"
+                  title="Show a QR code that opens this tournament in Display Mode"
+                  onClick={onQr}
+                >
+                  <QrIcon />
+                </button>
+              )}
               <button
                 data-testid="layout-button"
                 className="db-btn db-layout-btn"
@@ -470,7 +496,9 @@
     // button) shows it; Export JSON and Export CSV download it without
     // showing it (a published one as Firebase holds it right now). Focus
     // starts on this device's Show, so Enter or a TV remote's OK puts it up.
-    function DisplayPicker({ choices, loading, unavailable, onShow, onExport, onExit }) {
+    // viewerUrl(choice): the link its QR code leads to, or null when it has none
+    // (this device's tournament while it isn't published), which hides the button.
+    function DisplayPicker({ choices, loading, unavailable, onShow, onExport, viewerUrl, onQr, onExit }) {
       return (
         <div data-testid="display-picker" className="db">
           <div className="db-head">
@@ -487,6 +515,17 @@
                   <span className="db-muted">{c.source === 'local' ? c.name : `Updated ${formatStartedAt(c.updatedAt)}`}</span>
                 </div>
                 <div className="db-actions">
+                  {viewerUrl(c) && (
+                    <button
+                      data-testid="display-choice-qr"
+                      className="db-btn db-icon-btn"
+                      aria-label={`Show QR code for ${c.name}`}
+                      title="Show a QR code that opens this tournament in Display Mode"
+                      onClick={(e) => { e.stopPropagation(); onQr(c); }}
+                    >
+                      <QrIcon />
+                    </button>
+                  )}
                   <button
                     data-testid="display-choice-export-json"
                     className="db-btn"
@@ -517,6 +556,73 @@
             {loading && <li className="db-empty">Looking for published tournaments…</li>}
             {unavailable && <li className="db-empty">Published tournaments can't be reached right now. This device still works.</li>}
           </ul>
+        </div>
+      );
+    }
+
+    // QR icon from Lucide (lucide-static 1.61.0, icons/qr-code.svg).
+    // ISC License, Copyright (c) 2026 Lucide Icons and Contributors.
+    // Permission to use, copy, modify, and/or distribute this software for any
+    // purpose with or without fee is hereby granted, provided that the above
+    // copyright notice and this permission notice appear in all copies.
+    function QrIcon() {
+      return (
+        <svg className="db-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+          <rect width="5" height="5" x="3" y="3" rx="1" />
+          <rect width="5" height="5" x="16" y="3" rx="1" />
+          <rect width="5" height="5" x="3" y="16" rx="1" />
+          <path d="M21 16h-3a2 2 0 0 0-2 2v3" />
+          <path d="M21 21v.01" />
+          <path d="M12 7v3a2 2 0 0 1-2 2H7" />
+          <path d="M3 12h.01" />
+          <path d="M12 3h.01" />
+          <path d="M12 16v.01" />
+          <path d="M16 12h1" />
+          <path d="M21 12v.01" />
+          <path d="M12 21v-1" />
+        </svg>
+      );
+    }
+
+    // A full-screen QR code that opens `url` (a viewer link) in Display Mode on
+    // a phone, with the tournament's name above it and the URL below. Close,
+    // Escape or a click outside the code closes it. The code is drawn as SVG
+    // from qrcode-generator's modules, so it stays sharp at any size.
+    function QrDialog({ title, subtitle, url, onClose }) {
+      const makeQr = window.qrcode;
+      const modules = useMemo(() => (makeQr ? qrModules(url, makeQr) : null), [url, makeQr]);
+      useEffect(() => {
+        const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+      }, [onClose]);
+      return (
+        <div data-testid="qr-dialog" className="db-qr" role="dialog" aria-modal="true" aria-label={`QR code for ${title}`} onClick={onClose}>
+          <button className="db-btn db-qr-close" autoFocus onClick={onClose}>Close</button>
+          <div data-testid="qr-title" className="db-qr-title">{title}</div>
+          <div className="db-qr-sub">{subtitle}</div>
+          {modules ? (
+            <svg
+              data-testid="qr-code"
+              className="db-qr-code"
+              viewBox={`0 0 ${qrViewBoxSize(modules)} ${qrViewBoxSize(modules)}`}
+              shapeRendering="crispEdges"
+              role="img"
+              aria-label={`QR code for ${url}`}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <rect width="100%" height="100%" fill="#fff" />
+              <path d={qrSvgPath(modules)} fill="#000" />
+            </svg>
+          ) : (
+            <div className="db-qr-warn">The QR code generator couldn't load (it comes from cdn.jsdelivr.net). Share the link below instead.</div>
+          )}
+          {isLocalOnlyUrl(url) && (
+            <div data-testid="qr-local-warning" className="db-qr-warn">
+              This page is open at a local-only address, so phones can't follow this code. Open it at the computer's network address (e.g. http://192.168.x.x:8080/) or the club site, then show the QR code again.
+            </div>
+          )}
+          <div data-testid="qr-url" className="db-qr-url">{url}</div>
         </div>
       );
     }
@@ -1053,6 +1159,14 @@
         }, () => alert("Can't reach Firebase right now."));
       };
 
+      // QR Code on a Display Mode list row: the choice whose code is showing, or null.
+      const [qrChoice, setQrChoice] = useState(null);
+      const choiceUrl = (choice) => choiceViewerUrl(choice, {
+        href: window.location.href,
+        layout: displayLayout,
+        publishedId: remote && publishing ? publishing.tournamentId : null
+      });
+
       const exportChoice = (choice, format) => {
         if (choice.source === 'local') exportTournament(tournamentId, format);
         else exportPublished(choice.id, format);
@@ -1245,16 +1359,31 @@
       if (displayMode) {
         const exitDisplay = () => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false));
         const onSwitch = remote ? switchDisplaySource : null;
+        // Shown only while the tournament still has a viewer link.
+        const qrUrl = qrChoice && choiceUrl(qrChoice);
+        const qrDialog = qrUrl && (
+          <QrDialog
+            title={qrChoice.name}
+            subtitle={`Scan to open in Display Mode · Started ${formatStartedAt(qrChoice.startedAt)}`}
+            url={qrUrl}
+            onClose={() => setQrChoice(null)}
+          />
+        );
         if (displaySource === null) {
           return (
-            <DisplayPicker
-              choices={displayChoices({ id: tournamentId, name: tournamentName }, displayList.published)}
-              loading={displayList.loading}
-              unavailable={displayList.unavailable}
-              onShow={setDisplaySource}
-              onExport={exportChoice}
-              onExit={exitDisplay}
-            />
+            <React.Fragment>
+              <DisplayPicker
+                choices={displayChoices({ id: tournamentId, name: tournamentName, startedAt }, displayList.published)}
+                loading={displayList.loading}
+                unavailable={displayList.unavailable}
+                onShow={setDisplaySource}
+                onExport={exportChoice}
+                viewerUrl={choiceUrl}
+                onQr={setQrChoice}
+                onExit={exitDisplay}
+              />
+              {qrDialog}
+            </React.Fragment>
           );
         }
         if (displaySource.source === 'remote') {
@@ -1263,30 +1392,42 @@
             return <DisplayMessage text={message} onSwitch={onSwitch} onExit={exitDisplay} />;
           }
           const followed = remoteView.tournament;
+          const shown = { source: 'remote', id: displaySource.id, name: followed.tournamentName, startedAt: followed.startedAt };
           return (
+            <React.Fragment>
+              <DisplayBoard
+                board={boardForTournament(followed)}
+                title={followed.tournamentName}
+                started={formatStartedAt(followed.startedAt)}
+                onExit={exitDisplay}
+                onOpenWindow={isDisplayWindow ? null : () => window.open(remoteTournamentUrl(window.location.href, displaySource.id, displayLayout), '_blank')}
+                onSwitch={onSwitch}
+                onQr={() => setQrChoice(shown)}
+                qrAvailable={choiceUrl(shown) !== null}
+                layout={displayLayout}
+                onLayoutChange={setDisplayLayout}
+              />
+              {qrDialog}
+            </React.Fragment>
+          );
+        }
+        const shown = { source: 'local', id: tournamentId, name: tournamentName, startedAt };
+        return (
+          <React.Fragment>
             <DisplayBoard
-              board={boardForTournament(followed)}
-              title={followed.tournamentName}
-              started={formatStartedAt(followed.startedAt)}
+              board={boardForTournament(latestState.current)}
+              title={tournamentName}
+              started={formatStartedAt(startedAt)}
               onExit={exitDisplay}
-              onOpenWindow={isDisplayWindow ? null : () => window.open(remoteTournamentUrl(window.location.href, displaySource.id, displayLayout), '_blank')}
+              onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href, displayLayout), '_blank')}
               onSwitch={onSwitch}
+              onQr={() => setQrChoice(shown)}
+              qrAvailable={choiceUrl(shown) !== null}
               layout={displayLayout}
               onLayoutChange={setDisplayLayout}
             />
-          );
-        }
-        return (
-          <DisplayBoard
-            board={boardForTournament(latestState.current)}
-            title={tournamentName}
-            started={formatStartedAt(startedAt)}
-            onExit={exitDisplay}
-            onOpenWindow={isDisplayWindow ? null : () => window.open(displayModeUrl(window.location.href, displayLayout), '_blank')}
-            onSwitch={onSwitch}
-            layout={displayLayout}
-            onLayoutChange={setDisplayLayout}
-          />
+            {qrDialog}
+          </React.Fragment>
         );
       }
 

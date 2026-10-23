@@ -277,12 +277,33 @@ Enter or a TV remote's OK puts the local board up straight away. **Switch tourna
 list. A viewer link
 (`?remote=<id>`) opens straight to a published tournament on any phone or TV.
 
+The **QR code** button (a QR icon, on each row of the list and in the board's header just left of
+**Layout**) shows a full-screen QR code for that tournament's viewer link, so people can scan it with a
+phone and land straight in Display Mode. The tournament's name and start time sit above the code, and the
+full link in small type below. The code takes 80% of the screen's smaller side, so it fits any TV, laptop
+or phone. **Close**, Escape (a TV remote's Back) or a click outside the code closes it.
+
+- The link is built from the address the page is open at, so it works wherever the page is hosted. If that
+  address is only reachable from this computer (`localhost`, `127.0.0.1`), the dialog warns that phones
+  can't follow it: open the page at the network address or the club site instead.
+- The button only appears when there is a code to show. This device's tournament gets one once it is
+  published (New Tournament), since other phones can't read this browser; without publishing set up,
+  there is no button.
+- The icon is Lucide's `qr-code` (ISC licence), inlined in the page with its licence notice.
+- Codes are drawn with [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT),
+  loaded from jsDelivr at a pinned version with an integrity hash. If it can't load, the dialog still shows
+  the link.
+
 ```mermaid
 flowchart TD
     DESK["Control desk: score matches"] -->|"Display Mode"| PICK{"Choose a tournament"}
     PICK -->|"click This device, or Enter: its Show has focus"| BOARD["Board: tables on top, leaderboard and history below"]
     PICK -->|"click a published tournament"| LIVE["Board followed live from Firebase"]
     PICK -->|"Export JSON or Export CSV on a row"| FILE["Download: published JSON as stored, or results CSV built from it"]
+    PICK -->|"QR icon on a row"| QR["Full-screen QR of the viewer link, from this page's address"]
+    LIVE -->|"QR icon in the board header"| QR
+    BOARD -->|"QR icon once published"| QR
+    QR -->|"scanned"| TVB
     BOARD -->|"Layout button"| ARR["Tables on top, Tables left or Stacked"]
     BOARD -->|"drag, or arrow keys on a handle (TV remote)"| SIZE["Height and width splits"]
     ARR --> PREF[("Layout preference in this browser")]

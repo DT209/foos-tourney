@@ -96,6 +96,7 @@ async function openApp({
   beforeLoad,
   liveLeaderboard,
   blockLogo = false,
+  blockRequests = [],
   remote = false
 } = {}) {
   const chrome = findChrome();
@@ -117,8 +118,9 @@ async function openApp({
   const installRemote = target => target.evaluateOnNewDocument(remote ? installFakeRemote : PUBLISHING_OFF);
   await installRemote(page);
 
-  // Stub the club site: a live leaderboard (with CORS allowed) and/or a broken logo.
-  if (liveLeaderboard || blockLogo) {
+  // Stub the club site: a live leaderboard (with CORS allowed) and/or a broken
+  // logo. blockRequests: URL prefixes to fail, as if a CDN were unreachable.
+  if (liveLeaderboard || blockLogo || blockRequests.length) {
     await page.setRequestInterception(true);
     page.on('request', req => {
       if (liveLeaderboard && req.url() === LEADERBOARD_URL) {
@@ -128,7 +130,7 @@ async function openApp({
           headers: { 'Access-Control-Allow-Origin': '*' },
           body: leaderboardPage(liveLeaderboard)
         });
-      } else if (blockLogo && req.url() === LOGO_URL) {
+      } else if ((blockLogo && req.url() === LOGO_URL) || blockRequests.some(prefix => req.url().startsWith(prefix))) {
         req.abort();
       } else {
         req.continue();

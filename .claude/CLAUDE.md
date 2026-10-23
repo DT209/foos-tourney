@@ -93,7 +93,12 @@ when the module's flow changes.
   one followed from Firebase. With publishing on it opens on `DisplayPicker` (`initialDisplaySource`): one
   click on a row shows it. **Export JSON** and **Export CSV** on a row download it without showing it: this
   device's through `exportTournament`, a published one through `publishedDownload`, which fetches it fresh and
-  returns the stored JSON text unchanged (validated first) or a CSV built from it. A
+  returns the stored JSON text unchanged (validated first) or a CSV built from it. The QR button (Lucide's
+  `qr-code` icon, inlined with its ISC notice) on a row and in the board header appears only when
+  `choiceViewerUrl` returns a link, and opens `QrDialog` for `choiceViewerUrl`, built from `window.location.href` (never a
+  hard-coded host); `qrModules` and `qrSvgPath` turn the open-source `qrcode-generator` (pinned on
+  jsDelivr with an SRI hash, `window.qrcode`) into SVG sized `80vmin`. UI tests decode the rendered code
+  with `jsqr`. A
   window opened with `?display` or `?remote=<id>` must never save or publish: the auto-save and publish
   effects skip it, and it reloads the current tournament on `storage` events. Panel scrolling is the `nextAutoScroll` state machine, driven by a
   timer in `AutoScroll`. Display styles live in the `.db` CSS block in the HTML head and use only

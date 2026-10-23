@@ -2325,7 +2325,7 @@ globalThis.TournamentLogic = (() => {
   // published tournaments, without this device's own tournament.
   function displayChoices(local, published) {
     return [
-      { key: 'local', source: 'local', id: local.id, name: local.name },
+      { key: 'local', source: 'local', id: local.id, name: local.name, startedAt: local.startedAt },
       ...published
         .filter(p => p.id !== local.id)
         .map(p => ({
@@ -2514,6 +2514,51 @@ globalThis.TournamentLogic = (() => {
     return clipboard.writeText(text);
   }
 
+  // QR codes for viewer links, drawn as SVG by the page. makeQr is the
+  // open-source qrcode-generator factory (window.qrcode in the browser).
+  const QR_QUIET_ZONE = 4;
+
+  // Dark/light modules, row by row, at error correction level M and the
+  // smallest version that fits.
+  function qrModules(text, makeQr) {
+    const qr = makeQr(0, 'M');
+    qr.addData(text);
+    qr.make();
+    const size = qr.getModuleCount();
+    return Array.from({ length: size }, (_, r) => Array.from({ length: size }, (_, c) => qr.isDark(r, c)));
+  }
+
+  // One unit square per dark module, offset by the quiet zone.
+  function qrSvgPath(modules) {
+    let path = '';
+    modules.forEach((row, r) =>
+      row.forEach((dark, c) => {
+        if (dark) path += `M${c + QR_QUIET_ZONE} ${r + QR_QUIET_ZONE}h1v1h-1z`;
+      })
+    );
+    return path;
+  }
+
+  function qrViewBoxSize(modules) {
+    return modules[0].length + 2 * QR_QUIET_ZONE;
+  }
+
+  // The link a QR code on a Display Mode list row leads to: the viewer link,
+  // built from the address the page is open at. This device's tournament has
+  // one only while it is published (publishedId), since other devices can't
+  // read this browser's storage.
+  function choiceViewerUrl(choice, { href, layout, publishedId }) {
+    if (choice.source === 'local' && choice.id !== publishedId) return null;
+    return remoteTournamentUrl(href, choice.id, layout);
+  }
+
+  // Addresses only this computer can open, so a QR code for them won't work
+  // on a phone.
+  function isLocalOnlyUrl(url) {
+    const host = new URL(url).hostname;
+    return host === 'localhost' || host === '[::1]' || host === '0.0.0.0' || host.startsWith('127.');
+  }
+
   function remoteTournamentUrl(href, id, layout) {
     const url = new URL(href);
     url.searchParams.delete('display');
@@ -2691,6 +2736,12 @@ globalThis.TournamentLogic = (() => {
     copyToClipboard,
     remoteTournamentUrl,
     remoteIdFromSearch,
+    QR_QUIET_ZONE,
+    qrModules,
+    qrSvgPath,
+    qrViewBoxSize,
+    choiceViewerUrl,
+    isLocalOnlyUrl,
     boardForTournament,
     publishStartOutcome,
     takeOverOutcome,

@@ -309,8 +309,8 @@ describe('published lists', () => {
 
   it('put this device first and drop its published copy', () => {
     const published = publishedList(slots, tournaments, NOW);
-    assert.deepEqual(displayChoices({ id: ID, name: 'Week 3 (local)' }, published), [
-      { key: 'local', source: 'local', id: ID, name: 'Week 3 (local)' },
+    assert.deepEqual(displayChoices({ id: ID, name: 'Week 3 (local)', startedAt: 's0' }, published), [
+      { key: 'local', source: 'local', id: ID, name: 'Week 3 (local)', startedAt: 's0' },
       { key: ID2, source: 'remote', id: ID2, name: 'Old', startedAt: 's2', updatedAt: NOW - 30 * HOUR }
     ]);
     assert.equal(displayChoices({ id: 'other', name: 'Mine' }, published).length, 3);
