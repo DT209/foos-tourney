@@ -24,7 +24,9 @@ when the module's flow changes.
 
 ## Hard constraints
 
-- **Never transpile, bundle or minify.** `dist/` must be byte-identical to the source files.
+- **Never transpile, bundle or minify.** `dist/` must be byte-identical to the source files. The only
+  difference is a name: the build ships `TournamentManager.html` as `dist/index.html`, so hosts serve it at
+  the folder's address. Links are built from the current address, so never hard-code either name.
 - Keep 100% statement, branch, function and line coverage on `tournament-logic.js` (unit tests) and
   `firebase-remote.js` (emulator tests). Cover new branches with tests. Don't add `c8 ignore` comments.
 - `npm run build` must pass before committing: ESLint with zero warnings (including the inline JSX),

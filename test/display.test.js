@@ -200,4 +200,10 @@ describe('display mode URL', () => {
       'https://x.org/dyp/TournamentManager.html'
     );
   });
+
+  it('work at a folder address, where dist/index.html is served without a file name', () => {
+    assert.equal(L.displayModeUrl('https://x.org/dyp/'), 'https://x.org/dyp/?display=1');
+    assert.equal(L.remoteTournamentUrl('https://x.org/dyp/?display=1', 'abc'), 'https://x.org/dyp/?remote=abc');
+    assert.equal(L.controlDeskUrl('https://x.org/dyp/?remote=abc'), 'https://x.org/dyp/');
+  });
 });

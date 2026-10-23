@@ -11,7 +11,15 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
-const APP_FILES = ['TournamentManager.html', 'tournament-logic.js', 'firebase-config.js', 'firebase-remote.js'];
+const PAGE = 'TournamentManager.html';
+// Source file -> name in dist/. The page ships as index.html, so a host
+// serves it at the folder's address (e.g. calgaryfoosballclub.com/dyp/).
+const APP_FILES = {
+  [PAGE]: 'index.html',
+  'tournament-logic.js': 'tournament-logic.js',
+  'firebase-config.js': 'firebase-config.js',
+  'firebase-remote.js': 'firebase-remote.js'
+};
 const args = new Set(process.argv.slice(2));
 
 function run(cmd, cmdArgs) {
@@ -27,11 +35,11 @@ const npx =
 // Every name the page destructures from window.TournamentLogic must exist,
 // otherwise it is silently undefined at runtime (ESLint can't see this).
 function checkModuleContract() {
-  const html = fs.readFileSync(path.join(ROOT, 'TournamentManager.html'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, PAGE), 'utf8');
   const match = html.match(/const\s*\{([^}]*)\}\s*=\s*window\.TournamentLogic/);
-  if (!match) throw new Error('TournamentManager.html does not import from window.TournamentLogic');
+  if (!match) throw new Error(`${PAGE} does not import from window.TournamentLogic`);
   if (!html.includes('<script src="tournament-logic.js"></script>')) {
-    throw new Error('TournamentManager.html does not load tournament-logic.js');
+    throw new Error(`${PAGE} does not load tournament-logic.js`);
   }
   require(path.join(ROOT, 'tournament-logic.js'));
   const exported = new Set(Object.keys(globalThis.TournamentLogic));
@@ -63,22 +71,23 @@ function sha256(file) {
 function copyToDist() {
   fs.rmSync(DIST, { recursive: true, force: true });
   fs.mkdirSync(DIST);
+  // { "index.html": { "source": "TournamentManager.html", "sha256": ... }, ... }
   const manifest = {};
-  for (const file of APP_FILES) {
+  for (const [file, name] of Object.entries(APP_FILES)) {
     const src = path.join(ROOT, file);
-    const dest = path.join(DIST, file);
+    const dest = path.join(DIST, name);
     fs.copyFileSync(src, dest);
     if (sha256(src) !== sha256(dest)) throw new Error(`${file} changed while copying`);
-    manifest[file] = sha256(dest);
+    manifest[name] = { source: file, sha256: sha256(dest) };
   }
   fs.writeFileSync(path.join(DIST, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-  console.log(`dist/: ${APP_FILES.join(', ')} (unmodified) + manifest.json`);
+  console.log(`dist/: ${Object.values(APP_FILES).join(', ')} (unmodified copies) + manifest.json`);
 }
 
 const steps = [
   ['Lint (ESLint, zero warnings)', npx('eslint', '--max-warnings', '0', '.')],
   ['Format check (Prettier)', npx('prettier', '--check', '.')],
-  ['HTML validation (html-validate)', npx('html-validate', 'TournamentManager.html')],
+  ['HTML validation (html-validate)', npx('html-validate', PAGE)],
   ['Module contract (HTML imports vs. exports)', checkModuleContract],
   [
     'Cross-browser check (target browsers, secure-context APIs, CSS)',

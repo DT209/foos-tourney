@@ -50,7 +50,7 @@ mindmap
 
 ```mermaid
 flowchart TD
-    A["Open TournamentManager.html"] --> NT["New Tournament: published live for viewers"]
+    A["Open the page"] --> NT["New Tournament: published live for viewers"]
     NT --> B["Set name, tables, match format"]
     B --> C["Add players: Add Player, Add from Leaderboard, or Recent players"]
     C --> D["Draw New Match"]
@@ -93,24 +93,24 @@ build constraints, testing approach, known limitations) are in
 
 ## Layout
 
-| File                          | Purpose                                                                       |
-| ----------------------------- | ----------------------------------------------------------------------------- |
-| `TournamentManager.html`      | The page: React UI, compiled in the browser by Babel. No build step.          |
-| `tournament-logic.js`         | All tournament behaviour as plain functions (`window.TournamentLogic`).       |
-| `firebase-remote.js`          | Thin Firestore adapter for publishing (`window.FirebaseRemote`).              |
-| `firebase-config.js`          | The `foos-tourney` Firebase web config (public). `null` turns publishing off. |
-| `firestore.rules`             | Firestore security rules: the only server-side protection.                    |
-| `firebase.json`               | Rules file and emulator ports (8181, 9199) for `firebase-tools`.              |
-| `.firebaserc`                 | Makes `foos-tourney` the default project for `firebase-tools`.                |
-| `eslint.compat.config.js`     | Cross-browser rules: target-browser APIs and secure-page-only APIs.           |
-| `docs/firebase-plan.md`       | The publishing design, decisions and risks.                                   |
-| `test/`                       | `node:test` unit tests for every function in `tournament-logic.js`.           |
-| `test-e2e/`                   | UI tests: drive the real page in headless Chrome.                             |
-| `test-firebase/`              | Rules and adapter tests against the Firestore and Auth emulators.             |
-| `scripts/build.js`            | Quality gates, then copies the app to `dist/` unchanged.                      |
-| `scripts/check-css-compat.js` | Cross-browser check for the page's CSS.                                       |
+| File                          | Purpose                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------- |
+| `TournamentManager.html`      | The page: React UI, compiled in the browser by Babel. Ships as `dist/index.html`. |
+| `tournament-logic.js`         | All tournament behaviour as plain functions (`window.TournamentLogic`).           |
+| `firebase-remote.js`          | Thin Firestore adapter for publishing (`window.FirebaseRemote`).                  |
+| `firebase-config.js`          | The `foos-tourney` Firebase web config (public). `null` turns publishing off.     |
+| `firestore.rules`             | Firestore security rules: the only server-side protection.                        |
+| `firebase.json`               | Rules file and emulator ports (8181, 9199) for `firebase-tools`.                  |
+| `.firebaserc`                 | Makes `foos-tourney` the default project for `firebase-tools`.                    |
+| `eslint.compat.config.js`     | Cross-browser rules: target-browser APIs and secure-page-only APIs.               |
+| `docs/firebase-plan.md`       | The publishing design, decisions and risks.                                       |
+| `test/`                       | `node:test` unit tests for every function in `tournament-logic.js`.               |
+| `test-e2e/`                   | UI tests: drive the real page in headless Chrome.                                 |
+| `test-firebase/`              | Rules and adapter tests against the Firestore and Auth emulators.                 |
+| `scripts/build.js`            | Quality gates, then copies the app to `dist/` unchanged.                          |
+| `scripts/check-css-compat.js` | Cross-browser check for the page's CSS.                                           |
 
-Deploy by serving the contents of `dist/` (`TournamentManager.html`, `tournament-logic.js`,
+Deploy by serving the contents of `dist/` (`index.html`, the page, plus `tournament-logic.js`,
 `firebase-config.js` and `firebase-remote.js`) from one directory, e.g. `calgaryfoosballclub.com/dyp/`.
 The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
@@ -119,7 +119,7 @@ To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
 
 ```sh
 npm run build                                      # or: npm run build -- --skip-e2e --skip-firebase (about a minute)
-npx http-server@14.1.1 dist -a 0.0.0.0 -p 8080 -c-1   # then open http://<laptop-ip>:8080/TournamentManager.html
+npx http-server@14.1.1 dist -a 0.0.0.0 -p 8080 -c-1   # then open http://<laptop-ip>:8080/
 ```
 
 A plain-http address like `http://192.168.0.22:8080` isn't a secure page, so browsers leave out the
@@ -162,7 +162,8 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 9. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
    (`--skip-firebase` where Java isn't available)
 10. `npm audit` at high severity (`--skip-audit` when offline)
-11. Copy the four app files to `dist/` byte-for-byte, with a SHA-256 `manifest.json`
+11. Copy the four app files to `dist/` byte-for-byte, `TournamentManager.html` as `index.html`, with a
+    `manifest.json` giving each file's source and SHA-256
 
 The JavaScript is never transpiled, bundled or minified.
 
@@ -262,14 +263,14 @@ follows layout changes made on the laptop straight away. **Open on Another Scree
 viewer link carry the current layout (`?layout=top-50-50`), so a TV's own browser opens already
 arranged.
 
-**Open on Another Screen** opens the board in a new window (`TournamentManager.html?display=1`) that
+**Open on Another Screen** opens the board in a new window (`?display=1`) that
 can be moved to a TV. It updates as you score on the control desk and never saves anything. Without
 publishing it only follows tournaments on the same computer. **Exit Display** returns to the control desk.
 
 When publishing is set up, Display Mode and second-screen windows first show a list: **This device**
 (selected, so **Show** or Enter puts it up as before) and the tournaments published from any device,
 which are followed live. **Switch tournament** returns to the list. A viewer link
-(`TournamentManager.html?remote=<id>`) opens straight to a published tournament on any phone or TV.
+(`?remote=<id>`) opens straight to a published tournament on any phone or TV.
 
 ```mermaid
 flowchart TD
