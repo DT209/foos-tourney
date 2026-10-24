@@ -2,7 +2,8 @@
 
 Calgary Foosball Club tournament manager. See `README.md` for layout, deploy and commands.
 See `.claude/Flow.md` for diagrams of how `tournament-logic.js` and the page fit together. Keep it in sync
-when the module's flow changes.
+when the module's flow changes. See `.claude/TournamentRules.md` for the competition rules the code
+enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep it in sync when a rule changes.
 
 ## Architecture rules
 
