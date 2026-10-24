@@ -97,6 +97,7 @@ async function openApp({
   liveLeaderboard,
   blockLogo = false,
   blockRequests = [],
+  readySelector = 'footer',
   remote = false
 } = {}) {
   const chrome = findChrome();
@@ -119,7 +120,8 @@ async function openApp({
   await installRemote(page);
 
   // Stub the club site: a live leaderboard (with CORS allowed) and/or a broken
-  // logo. blockRequests: URL prefixes to fail, as if a CDN were unreachable.
+  // logo. blockRequests: URL parts to fail, as if a CDN or file were unreachable.
+  // readySelector: what to wait for after loading (default: the footer).
   if (liveLeaderboard || blockLogo || blockRequests.length) {
     await page.setRequestInterception(true);
     page.on('request', req => {
@@ -130,7 +132,7 @@ async function openApp({
           headers: { 'Access-Control-Allow-Origin': '*' },
           body: leaderboardPage(liveLeaderboard)
         });
-      } else if ((blockLogo && req.url() === LOGO_URL) || blockRequests.some(prefix => req.url().startsWith(prefix))) {
+      } else if ((blockLogo && req.url() === LOGO_URL) || blockRequests.some(part => req.url().includes(part))) {
         req.abort();
       } else {
         req.continue();
@@ -144,6 +146,7 @@ async function openApp({
     url,
     errors: [],
     dialogs: [],
+    leavePrompts: 0,
     pause,
     // Opens another page in the same browser (sharing localStorage), e.g. a
     // ?display window. Its coverage and page errors count like the main page's.
@@ -173,7 +176,7 @@ async function openApp({
     },
     async load() {
       await page.goto(url, { waitUntil: 'networkidle0' });
-      await page.waitForSelector('footer');
+      await page.waitForSelector(readySelector);
     },
     // Coverage is saved per page load, so flush it before reloading.
     async reload() {
@@ -182,7 +185,7 @@ async function openApp({
         await page.coverage.startJSCoverage(COVERAGE_OPTIONS);
       }
       await page.reload({ waitUntil: 'networkidle0' });
-      await page.waitForSelector('footer');
+      await page.waitForSelector(readySelector);
     },
     // Sets the frozen clock used from the next page load on.
     async setClock(isoInstant) {
@@ -357,7 +360,13 @@ async function openApp({
   };
 
   page.on('pageerror', e => app.errors.push(e.message));
+  // Dialogs are accepted, except "leave page?" prompts, which stay on the page.
   page.on('dialog', d => {
+    if (d.type() === 'beforeunload') {
+      app.leavePrompts += 1;
+      d.dismiss();
+      return;
+    }
     app.dialogs.push(d.message());
     d.accept();
   });
