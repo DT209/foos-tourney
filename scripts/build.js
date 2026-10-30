@@ -8,6 +8,7 @@ const { spawnSync } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { LOCAL_SCRIPTS, staleStamps } = require('./script-stamps');
 
 const ROOT = path.resolve(__dirname, '..');
 const DIST = path.join(ROOT, 'dist');
@@ -34,13 +35,20 @@ const npx =
 
 // Every name the page destructures from window.TournamentLogic must exist,
 // otherwise it is silently undefined at runtime (ESLint can't see this).
+// Each local script's tag carries the current version stamp, so browsers that
+// cached an older copy fetch the new one (see scripts/script-stamps.js).
+function checkScriptStamps() {
+  const html = fs.readFileSync(path.join(ROOT, PAGE), 'utf8');
+  const files = Object.fromEntries(LOCAL_SCRIPTS.map(name => [name, fs.readFileSync(path.join(ROOT, name), 'utf8')]));
+  const stale = staleStamps(html, files);
+  if (stale.length) throw new Error(`Stale script stamps for ${stale.join(', ')}: run npm run stamp`);
+  console.log(`${LOCAL_SCRIPTS.length} script tags carry current version stamps`);
+}
+
 function checkModuleContract() {
   const html = fs.readFileSync(path.join(ROOT, PAGE), 'utf8');
   const match = html.match(/const\s*\{([^}]*)\}\s*=\s*window\.TournamentLogic/);
   if (!match) throw new Error(`${PAGE} does not import from window.TournamentLogic`);
-  if (!html.includes('<script src="tournament-logic.js"></script>')) {
-    throw new Error(`${PAGE} does not load tournament-logic.js`);
-  }
   require(path.join(ROOT, 'tournament-logic.js'));
   const exported = new Set(Object.keys(globalThis.TournamentLogic));
   const imported = match[1]
@@ -89,6 +97,7 @@ const steps = [
   ['Format check (Prettier)', npx('prettier', '--check', '.')],
   ['HTML validation (html-validate)', npx('html-validate', PAGE)],
   ['Module contract (HTML imports vs. exports)', checkModuleContract],
+  ['Script version stamps (no stale cached scripts)', checkScriptStamps],
   [
     'Cross-browser check (target browsers, secure-context APIs, CSS)',
     () => run('npm', ['run', '--silent', 'check:browsers'])
@@ -105,6 +114,8 @@ const steps = [
       'scripts/leaderboard-snapshot.js',
       '--include',
       'scripts/coverage-merge.js',
+      '--include',
+      'scripts/script-stamps.js',
       '--reporter',
       'text',
       '--reporter',

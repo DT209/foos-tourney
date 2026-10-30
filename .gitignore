@@ -7,3 +7,5 @@ coverage-ui/
 *.publisher-code.txt
 *-debug.log
 coverage-firebase/
+# FTP deploy script: holds the club host's login
+lftp.sh

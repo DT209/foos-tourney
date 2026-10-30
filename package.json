@@ -11,13 +11,14 @@
     "format:check": "prettier --check .",
     "validate:html": "html-validate TournamentManager.html",
     "test": "node --test test/*.test.js",
-    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --include scripts/leaderboard-snapshot.js --include scripts/coverage-merge.js --reporter text --reporter html node --test test/*.test.js",
+    "coverage": "c8 --check-coverage --100 --include tournament-logic.js --include scripts/leaderboard-snapshot.js --include scripts/coverage-merge.js --include scripts/script-stamps.js --reporter text --reporter html node --test test/*.test.js",
     "audit": "npm audit --audit-level=high",
     "refresh-leaderboard": "node scripts/refresh-leaderboard.js",
     "test:e2e": "node --test --test-concurrency=1 --test-timeout=90000 test-e2e/*.e2e.js",
     "coverage:ui": "node scripts/ui-coverage.js",
     "test:firebase": "npx --yes firebase-tools@15.32.1 emulators:exec --only firestore,auth --project demo-foos-tourney \"c8 --check-coverage --100 --include firebase-remote.js --reports-dir coverage-firebase --reporter text node --test --test-concurrency=1 test-firebase/rules.fb.js test-firebase/remote.fb.js\"",
-    "check:browsers": "eslint -c eslint.compat.config.js --max-warnings 0 tournament-logic.js firebase-remote.js firebase-config.js TournamentManager.html && node scripts/check-css-compat.js"
+    "check:browsers": "eslint -c eslint.compat.config.js --max-warnings 0 tournament-logic.js firebase-remote.js firebase-config.js TournamentManager.html && node scripts/check-css-compat.js",
+    "stamp": "node scripts/stamp.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

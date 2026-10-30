@@ -112,7 +112,9 @@ build constraints, testing approach, known limitations) are in
 
 Deploy by serving the contents of `dist/` (`index.html`, the page, plus `tournament-logic.js`,
 `firebase-config.js` and `firebase-remote.js`) from one directory, e.g. `calgaryfoosballclub.com/dyp/`.
-The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
+Always upload all four together. The club host lets browsers cache `.js` files for 31 days, so the page
+loads its scripts with version stamps (`?v=…`): a new upload changes their URLs and every browser fetches the
+new copies. The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
 
 To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
@@ -151,24 +153,27 @@ npm run format      # apply Prettier to JS/JSON/Markdown
 2. Prettier format check
 3. html-validate
 4. Module contract: every name the page imports from `TournamentLogic` exists
-5. Cross-browser check (`npm run check:browsers`): browser APIs and CSS the targets in `package.json`
+5. Script version stamps: each of the page's own `<script>` tags carries the start of that file's SHA-256
+   (`tournament-logic.js?v=9de0b4613b`), so browsers never pair a new page with a cached old script. Run
+   `npm run stamp` after changing a script; the build fails while a stamp is stale
+6. Cross-browser check (`npm run check:browsers`): browser APIs and CSS the targets in `package.json`
    `browserslist` don't support, and APIs that only exist on secure pages (HTTPS or localhost), such as
    `crypto.randomUUID`, which are missing when the page is opened from a plain-http LAN address. Each
    finding is a build failure
-6. Unit tests with 100% statement, branch, function and line coverage
-7. UI tests in headless Chrome, covering every control at desktop, tablet and phone widths
-8. UI coverage: every function in the page's UI script (components, handlers, inline callbacks)
+7. Unit tests with 100% statement, branch, function and line coverage
+8. UI tests in headless Chrome, covering every control at desktop, tablet and phone widths
+9. UI coverage: every function in the page's UI script (components, handlers, inline callbacks)
    must run in at least one UI test
-9. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
-   (`--skip-firebase` where Java isn't available)
-10. `npm audit` at high severity (`--skip-audit` when offline)
-11. Copy the four app files to `dist/` byte-for-byte, `TournamentManager.html` as `index.html`, with a
+10. Firestore rules and the adapter on the local emulators, with 100% coverage of `firebase-remote.js`
+    (`--skip-firebase` where Java isn't available)
+11. `npm audit` at high severity (`--skip-audit` when offline)
+12. Copy the four app files to `dist/` byte-for-byte, `TournamentManager.html` as `index.html`, with a
     `manifest.json` giving each file's source and SHA-256
 
 The JavaScript is never transpiled, bundled or minified.
 
 Chrome is found via `CHROME_PATH` or the usual install paths. The CI image (`ubuntu-24.04`) has it, and CI
-installs Java 21 for the emulators. Steps 7 and 8 are skipped with `--skip-e2e` where Chrome or the
+installs Java 21 for the emulators. Steps 8 and 9 are skipped with `--skip-e2e` where Chrome or the
 network is unavailable.
 
 UI coverage is measured with Chrome's own V8 coverage of the compiled page script, merged across every

@@ -19,6 +19,10 @@ enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep 
   Don't convert it to ES modules or CommonJS: the page loads it with a plain `<script>` and has no build step.
 - When you add an export, also add it to the destructuring list at the top of the Babel block in
   the HTML. The build's module-contract step fails if the page imports a name that isn't exported.
+- After changing `tournament-logic.js`, `firebase-config.js` or `firebase-remote.js`, run `npm run stamp`.
+  The page loads them as `name.js?v=<first 10 hex of SHA-256>`, because the club host lets browsers cache
+  `.js` for 31 days and a new page with a cached old script crashes ("x is not a function"). The build
+  fails while a stamp is stale (`scripts/script-stamps.js`).
 - `firebase-remote.js` is the only code that talks to Firebase. Keep it thin: decisions and write plans
   belong in `tournament-logic.js` (the Publishing section), and the adapter just runs them. Change
   `firestore.rules` and its tests together: the rules are the only server-side protection.
