@@ -193,6 +193,13 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
   events to reopen or delete. The current tournament can't be deleted. The list is ordered by start time, newest first,
   and opening a tournament doesn't change the order.
 - CSV match IDs are prefixed with the tournament UUID, so exports never collide across events.
+- **Finishing:** when the last bracket match is confirmed, **Tournament Complete!** asks whether the tournament
+  is done. **Finish Tournament** makes it read-only on this page for good: scores, players and the bracket
+  can't be changed, and the admin PIN can't undo it. **Not Yet** keeps it editable (the bracket's **Standings**
+  button asks again). The dialog and a banner then offer **Export CSV** and **Export JSON**, and Display Mode
+  shows it as **Final**. To correct a finished tournament, Export JSON, edit the file, and Import it with
+  **Replace Saved Copy**; setting `"finishedAt": null` reopens it. CSV files can't be imported: they only hold
+  match results.
 
 ## Exporting and importing tournaments
 

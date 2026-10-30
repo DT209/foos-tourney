@@ -111,7 +111,10 @@ globalThis.TournamentLogic = (() => {
       seedingStrategy: 'ranking',
       customTeams: [],
       isLocked: false,
-      adminPin: null
+      adminPin: null,
+      // Set when the organizer finishes the tournament; from then on it is
+      // read-only on this page (see tournamentEditLock).
+      finishedAt: null
     };
   }
 
@@ -187,7 +190,8 @@ globalThis.TournamentLogic = (() => {
     teamFormationStrategy: isOneOf(['fair', 'topBias', 'topBottomRandom', 'random', 'manual']),
     seedingStrategy: isOneOf(['ranking', 'random', 'elo']),
     customTeams: v => isArrayOf(v, isCustomTeam),
-    adminPin: v => v === null || typeof v === 'string'
+    adminPin: v => v === null || typeof v === 'string',
+    finishedAt: v => v === null || (typeof v === 'string' && !isNaN(Date.parse(v)))
   };
 
   function isValidField(key, value, fallback) {
@@ -2175,7 +2179,7 @@ globalThis.TournamentLogic = (() => {
   // What Display Mode shows (tables, leaderboard, history) as one string, so
   // a change to any of them is a string comparison.
   function watchedSections(board) {
-    return JSON.stringify([board.tables, board.standings, board.history]);
+    return JSON.stringify([board.tables, board.standings, board.history, board.finished]);
   }
 
   function watchedChanged(previous, next) {
@@ -2423,13 +2427,44 @@ globalThis.TournamentLogic = (() => {
   // The Display Mode board for any tournament state (the open one, or one
   // read from Firebase).
   function boardForTournament(state) {
-    return buildDisplayBoard({
-      matches: state.matches,
-      bracketAssignments: assignBracketTables(state.bracketData, state.tableCount),
-      tableCount: state.tableCount,
-      players: state.players,
-      completedMatches: getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId)
-    });
+    return {
+      ...buildDisplayBoard({
+        matches: state.matches,
+        bracketAssignments: assignBracketTables(state.bracketData, state.tableCount),
+        tableCount: state.tableCount,
+        players: state.players,
+        completedMatches: getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId)
+      }),
+      finished: state.finishedAt !== null
+    };
+  }
+
+  // ==========================================
+  // FINISHING A TOURNAMENT
+  // ==========================================
+  // Once the bracket is complete the organizer can finish the tournament.
+  // A finished tournament is read-only on this page for good: no PIN lifts it.
+  // To correct one, export its JSON, edit it (finishedAt: null reopens it) and
+  // import it with Replace Saved Copy.
+
+  function canFinishTournament(state) {
+    return state.bracketData !== null && state.bracketData.isCompleted === true && state.finishedAt === null;
+  }
+
+  // Returns { finishedAt } or { error }.
+  function finishTournament(state, now) {
+    if (!canFinishTournament(state)) {
+      return { error: 'A tournament can only be finished once its bracket is complete.' };
+    }
+    return { finishedAt: now.toISOString() };
+  }
+
+  // Why editing is off: 'finished' (permanent here), 'readOnly' (viewing a
+  // file or published copy), 'pin' (the admin lock), or null when editable.
+  function tournamentEditLock({ isLocked, readOnly, finishedAt }) {
+    if (finishedAt !== null) return 'finished';
+    if (readOnly) return 'readOnly';
+    return isLocked ? 'pin' : null;
   }
 
   // What the page does with startPublishing's result:
@@ -2743,6 +2778,9 @@ globalThis.TournamentLogic = (() => {
     choiceViewerUrl,
     isLocalOnlyUrl,
     boardForTournament,
+    canFinishTournament,
+    finishTournament,
+    tournamentEditLock,
     publishStartOutcome,
     takeOverOutcome,
     parsePublishedTournament,

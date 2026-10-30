@@ -106,7 +106,8 @@ describe('newTournamentState / restoreTournamentState', () => {
       seedingStrategy: 'ranking',
       customTeams: [],
       isLocked: false,
-      adminPin: null
+      adminPin: null,
+      finishedAt: null
     });
   });
 

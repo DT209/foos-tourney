@@ -63,6 +63,7 @@
     .db-actions { display: flex; gap: 0.4em; }
     .db-btn { font-size: 0.65em; padding: 0.5em 0.9em; border-radius: 0.4em; border: 0.08em solid #2e3543; background: #181b22; color: #e5e7eb; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; }
     .db-btn:hover { border-color: #d12328; }
+    .db-final { margin-left: 0.6em; padding: 0.1em 0.5em; border-radius: 0.3em; background: #ca8a04; color: #0e1015; font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
     .db-icon-btn { display: inline-flex; align-items: center; justify-content: center; padding: 0.35em 0.55em; }
     .db-icon { width: 1.5em; height: 1.5em; display: block; }
     .db-grid { flex: 1; min-height: 0; display: grid; }
@@ -152,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=9de0b4613b"></script>
+  <script src="tournament-logic.js?v=8a6a5bf798"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -182,7 +183,7 @@
       loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, tournamentEditLock, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -390,7 +391,7 @@
           <div className="db-head">
             <div>
               <div className="db-title">{title}</div>
-              <div className="db-sub">Started {started}</div>
+              <div className="db-sub">Started {started}{board.finished && <span data-testid="display-final" className="db-final">Final</span>}</div>
             </div>
             <div className="db-actions">
               {qrAvailable && (
@@ -716,6 +717,9 @@
       // Admin Lock State - tool is fully unlocked (editable) by default.
       // The first lock sets the PIN; after that the PIN toggles View Only mode.
       const [adminPin, setAdminPin] = useState(restored.adminPin);
+      // When the tournament was finished (null while it runs). A finished
+      // tournament is read-only here for good; see tournamentEditLock.
+      const [finishedAt, setFinishedAt] = useState(restored.finishedAt);
       const [isLocked, setIsLocked] = useState(restored.isLocked);
       const [pinInput, setPinInput] = useState('');
       const [showPinModal, setShowPinModal] = useState(false);
@@ -778,13 +782,18 @@
       // Read-only view of an imported file: { name, previous } where previous is
       // our own tournament, restored by Close View. Nothing is saved meanwhile.
       const [readOnlyView, setReadOnlyView] = useState(null);
-      const editingLocked = isLocked || readOnlyView !== null;
+      // Why editing is off ('finished', 'readOnly', 'pin') or null. Finishing
+      // locks only this tournament: New Tournament, Saved Tournaments, Import
+      // and Take Over still work.
+      const editLock = tournamentEditLock({ isLocked, readOnly: readOnlyView !== null, finishedAt });
+      const editingLocked = editLock !== null;
+      const canLeaveTournament = editLock === null || editLock === 'finished';
 
       // The persisted tournament as one object (for saving and exporting).
       const currentTournamentState = () => ({
         tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
         players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin
+        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt
       });
 
       // --- AUTO-SAVE (paused while viewing a file read-only) ---
@@ -793,7 +802,7 @@
         setIsSaved(saveTournament(storage, currentTournamentState()));
       }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin]);
+          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt]);
 
       // --- DISPLAY WINDOW: follow the control desk's saves in other tabs/windows ---
       useEffect(() => {
@@ -1103,6 +1112,7 @@
         setCustomTeams(t.customTeams);
         setIsLocked(t.isLocked);
         setAdminPin(t.adminPin);
+        setFinishedAt(t.finishedAt);
         setEditingPlayerId(null);
         setPendingCustomPlayerName(null);
         setShowNewTournamentWarning(false);
@@ -1367,6 +1377,17 @@
         setBracketData(result.bracket);
       };
 
+      // "Is the tournament done?" in the Tournament Complete dialog.
+      const handleFinishTournament = () => {
+        const result = finishTournament(currentTournamentState(), new Date());
+        if (result.error) {
+          alert(result.error);
+          return;
+        }
+        setFinishedAt(result.finishedAt);
+      };
+      const askToFinish = editLock === null && canFinishTournament(currentTournamentState());
+
       const bracketStandings = calculateBracketStandings(bracketData);
 
       // Assign tables dynamically to ready/active matches without reassigning established tables
@@ -1502,7 +1523,7 @@
                   🏆 Draw Brackets
                 </button>
 
-                {readOnlyView ? null : !isLocked ? (
+                {readOnlyView || finishedAt ? null : !isLocked ? (
                   <button
                     onClick={() => setShowPinModal(true)}
                     className="bg-gray-900 hover:bg-black text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
@@ -1551,7 +1572,7 @@
                       🏆 Draw Brackets
                     </button>
 
-                    {readOnlyView ? null : !isLocked ? (
+                    {readOnlyView || finishedAt ? null : !isLocked ? (
                       <button
                         onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
                         className="w-full bg-gray-900 hover:bg-black text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center border border-gray-700"
@@ -1609,7 +1630,25 @@
               </div>
             )}
 
-            {isLocked && !readOnlyView && (
+            {editLock === 'finished' && (
+              <div data-testid="finished-banner" className="bg-yellow-950/50 border border-yellow-700 text-yellow-100 text-xs px-4 py-2.5 rounded-lg flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  <span className="font-bold uppercase tracking-wider">🏁 Final</span> · Finished {formatStartedAt(finishedAt)}. This tournament
+                  is read-only here. To correct it, Export JSON, edit the file, and Import it with Replace Saved Copy
+                  (setting <code>"finishedAt": null</code> reopens it).
+                </span>
+                <span className="flex gap-2 flex-shrink-0">
+                  <button onClick={() => exportTournament(tournamentId, 'csv')} className="bg-green-200 hover:bg-green-300 text-green-900 px-3 py-1 rounded font-semibold">
+                    Export CSV
+                  </button>
+                  <button onClick={() => exportTournament(tournamentId, 'json')} className="bg-sky-200 hover:bg-sky-300 text-sky-900 px-3 py-1 rounded font-semibold">
+                    Export JSON
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {editLock === 'pin' && (
               <div className="bg-rose-950/60 border border-rose-700 text-rose-200 text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg flex items-center gap-2">
                 <span>👁</span> View Only Mode — editing is disabled. Click "View Only (Unlock)" and enter the PIN to resume editing.
               </div>
@@ -2001,7 +2040,7 @@
                       </div>
                       <button
                         onClick={openTakeOver}
-                        disabled={editingLocked}
+                        disabled={!canLeaveTournament}
                         className="w-full bg-cfc-panelLight hover:bg-gray-700 text-white text-xs py-2 rounded font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Take Over Publishing…
@@ -2240,12 +2279,51 @@
                     })}
                   </div>
 
-                  <button 
-                    onClick={() => setShowWinnerModal(false)}
-                    className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
-                  >
-                    Close Results
-                  </button>
+                  {askToFinish ? (
+                    <div data-testid="finish-question" className="space-y-3 text-left">
+                      <p className="text-xs text-gray-300">
+                        <span className="font-bold text-white">Is the tournament done?</span> Finishing makes it read-only on this page:
+                        scores, players and the bracket can no longer be changed here, and the admin PIN can't undo it. Pick
+                        Not Yet if anything still needs fixing.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setShowWinnerModal(false)}
+                          className="flex-1 bg-cfc-panelLight hover:bg-gray-700 text-gray-200 font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
+                        >
+                          Not Yet
+                        </button>
+                        <button
+                          onClick={handleFinishTournament}
+                          className="flex-1 bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
+                        >
+                          Finish Tournament
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <React.Fragment>
+                      {finishedAt && (
+                        <div data-testid="finished-exports" className="space-y-2">
+                          <p className="text-xs text-yellow-200 font-bold">🏁 Finished. Save the final results:</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => exportTournament(tournamentId, 'csv')} className="flex-1 bg-green-200 hover:bg-green-300 text-green-900 font-bold py-2 rounded text-xs uppercase tracking-wider">
+                              Export CSV
+                            </button>
+                            <button onClick={() => exportTournament(tournamentId, 'json')} className="flex-1 bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold py-2 rounded text-xs uppercase tracking-wider">
+                              Export JSON
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <button 
+                        onClick={() => setShowWinnerModal(false)}
+                        className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
+                      >
+                        Close Results
+                      </button>
+                    </React.Fragment>
+                  )}
                 </div>
               </div>
             )}
@@ -2511,7 +2589,7 @@
                         </button>
                         <button
                           onClick={() => setShowNewTournamentWarning(true)}
-                          disabled={editingLocked}
+                          disabled={!canLeaveTournament}
                           className="flex-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/80 text-rose-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           New Tournament

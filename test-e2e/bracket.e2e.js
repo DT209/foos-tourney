@@ -113,11 +113,12 @@ describe('single elimination', () => {
     assert.match(results, /1st Place/);
     assert.match(results, /2nd Place/);
     assert.match(results, /3rd Place/);
-    await app.click('Close Results');
+    // Not Yet closes the results and leaves the tournament editable (see finish.e2e.js).
+    await app.click('Not Yet');
     assert.doesNotMatch(await app.text(), /Final Playoff Standings/);
     await app.click('Standings');
     assert.match(await app.text(), /Final Playoff Standings/);
-    await app.click('Close Results');
+    await app.click('Not Yet');
 
     await app.click('Monster / Open Play Stage');
     assert.match(await app.textOf('[data-testid="match-history"]'), /Playoffs/, 'bracket results join the history');

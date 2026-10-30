@@ -113,6 +113,10 @@ enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep 
   variables, and `data-arrangement` picks the grid. `splitDirections` says which way each handle drags.
   Other windows follow layout changes through `storage` events (`isDisplayLayoutKey`), and `?layout=`
   links (`layoutParam`, `layoutFromSearch`) carry it to other devices. Below 48em everything stacks.
+- `finishedAt` (persisted, exported, published) marks a finished tournament. `tournamentEditLock` returns
+  `'finished'` before `'readOnly'` or `'pin'`, so nothing on the page lifts it; the admin-lock buttons are hidden
+  and only New Tournament, Saved Tournaments, Import, Take Over and the exports stay available. Gate any new
+  editing control on `editingLocked`, and any "leave this tournament" control on `canLeaveTournament`.
 - Publishing state is `foosTourney.publishing` (`{ tournamentId, slot, code }`, one per browser), never part of
   a tournament or its export. The published copy is the Export JSON text from `publishedExport`, with the PIN
   and lock blanked. Firestore can't store the bracket's nested arrays, so it is a string, not a map. Only
