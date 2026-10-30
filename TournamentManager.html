@@ -197,6 +197,41 @@
     const formatStartedAt = (iso) =>
       new Date(iso).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
+    // Hover help for the control desk's buttons: what pressing each one does.
+    const BUTTON_HELP = {
+      menu: 'Opens the menu with Display Mode, Draw Brackets and Admin Lock.',
+      closeMenu: 'Closes the menu.',
+      displayMode: 'Opens a full-screen board of tables, standings and match history for TVs and phones. Exit Display returns here.',
+      displayModeList: 'Opens a full-screen board for TVs and phones. First pick this tournament or one published from another device. Exit Display returns here.',
+      drawBrackets: 'Opens bracket setup: team count, elimination type, best-of, team formation and seeding. Nothing changes until you press Build Bracket.',
+      adminLock: 'Asks for a 4-8 digit PIN, then locks editing so nobody changes the tournament by accident. Display Mode still works.',
+      unlock: 'Asks for the PIN, then turns editing back on. Forgot PIN? unlocks after a confirm.',
+      closeView: 'Closes this read-only copy and brings back the tournament you had open. Nothing from the copy is saved.',
+      dismiss: 'Hides this notice. It does not change publishing.',
+      monsterTab: 'Shows the roster, live tables and Monster standings.',
+      bracketTab: 'Shows the playoff bracket.',
+      drawMatch: 'Puts a new match on the lowest free table. Picks active players who are not playing, favours those who sat out, and avoids repeat partners and opponents.',
+      clearMatches: 'Asks first, then deletes every Monster result and resets all player stats to zero. A bracket goes back to Round 1 with the same teams. The roster stays.',
+      newTournament: 'Asks first, then starts an empty tournament. This one stays in Saved Tournaments.',
+      newTournamentPublished: 'Asks first, then starts an empty tournament and publishes it live. This one stays in Saved Tournaments.',
+      savedTournaments: 'Lists the tournaments saved in this browser, to open, export, delete or import.',
+      publishing: 'Shows the live viewer link and publisher code, or takes over publishing from another browser.',
+      addPlayer: 'Adds the name to the roster. A name not on the club leaderboard or recent players asks first and joins as a guest.',
+      addFromLeaderboard: 'Opens the club leaderboard to tick several players and add them at once.',
+      paid: 'Marks the entry fee paid or unpaid. For bookkeeping only: it changes nothing else.',
+      active: 'Pauses or resumes the player. Paused players are left out of Draw New Match but still rank and still enter the bracket draw.',
+      editName: 'Renames the player. Press ✓ to save.',
+      saveName: 'Saves the new name. Names must be unique.',
+      deletePlayer: 'Asks first, then removes the player from the roster. Their past matches are kept.',
+      playerMenu: 'Shows Paid, Active, Edit Name and Delete Player for this player.',
+      deleteMatch: 'Asks first, then deletes this match without a result and frees the table.',
+      finishMatch: 'Records a match win or loss and the goals for every player in it, updates the standings and frees the table.',
+      confirmBracketMatch: 'Records the winner and moves both teams on in the bracket. It can\'t be edited afterwards: only Clear Matches undoes it.',
+      drawBracketStage: 'Opens bracket setup. The top of the Monster standings qualify.',
+      standings: 'Shows the final bracket places.',
+      redrawBrackets: 'Opens bracket setup. Building a new bracket replaces this one and its results.'
+    };
+
     // ==========================================
     // REUSABLE MATCH CARD COMPONENT FOR BRACKET
     // ==========================================
@@ -298,6 +333,7 @@
               <button
                 data-testid="confirm-match"
                 onClick={onConfirm}
+                title={BUTTON_HELP.confirmBracketMatch}
                 disabled={!calculatedWinner || locked}
                 className={`w-full py-1.5 rounded font-bold text-xs uppercase tracking-wider transition ${
                   calculatedWinner && !locked
@@ -1499,6 +1535,7 @@
               {/* Hamburger Button */}
               <button 
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                title={BUTTON_HELP.menu}
                 className="lg:hidden bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 font-bold px-3 py-1.5 text-xs rounded flex items-center gap-1 transition flex-shrink-0"
                 aria-label="Toggle Navigation Menu"
               >
@@ -1510,7 +1547,7 @@
                 <button 
                   onClick={openDisplayMode}
                   className="bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-3 py-2 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center gap-1.5 transition"
-                  title="Show tables, leaderboard and history for TVs and phones"
+                  title={remote ? BUTTON_HELP.displayModeList : BUTTON_HELP.displayMode}
                 >
                   <span>📺</span> Display Mode
                 </button>
@@ -1518,6 +1555,7 @@
                 <button
                   onClick={handleDrawBracketsClick}
                   disabled={editingLocked}
+                  title={BUTTON_HELP.drawBrackets}
                   className="bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-2 text-xs uppercase tracking-widest rounded shadow transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                 >
                   🏆 Draw Brackets
@@ -1526,6 +1564,7 @@
                 {readOnlyView || finishedAt ? null : !isLocked ? (
                   <button
                     onClick={() => setShowPinModal(true)}
+                    title={isLocked ? BUTTON_HELP.unlock : BUTTON_HELP.adminLock}
                     className="bg-gray-900 hover:bg-black text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
                   >
                     🔓 Admin Lock
@@ -1533,6 +1572,7 @@
                 ) : (
                   <button
                     onClick={() => setShowPinModal(true)}
+                    title={isLocked ? BUTTON_HELP.unlock : BUTTON_HELP.adminLock}
                     className="bg-rose-700 hover:bg-rose-800 text-white text-xs px-3 py-2 rounded font-bold uppercase tracking-wider transition"
                   >
                     🔒 View Only (Unlock)
@@ -1549,6 +1589,7 @@
                     <h3 className="text-white font-black uppercase text-sm tracking-wider">Tournament Options</h3>
                     <button 
                       onClick={() => setIsMobileMenuOpen(false)}
+                      title={BUTTON_HELP.closeMenu}
                       className="text-gray-400 hover:text-white text-lg font-bold px-2 py-0.5 rounded"
                       aria-label="Close menu"
                     >
@@ -1559,6 +1600,7 @@
                   <div className="flex flex-col gap-3">
                     <button 
                       onClick={() => { openDisplayMode(); setIsMobileMenuOpen(false); }}
+                      title={remote ? BUTTON_HELP.displayModeList : BUTTON_HELP.displayMode}
                       className="w-full bg-sky-200 hover:bg-sky-300 text-sky-900 font-bold px-4 py-3 text-xs uppercase tracking-wider rounded border border-sky-600 flex items-center justify-center gap-2 transition"
                     >
                       <span>📺</span> Display Mode
@@ -1566,6 +1608,7 @@
 
                     <button
                       onClick={() => { setIsMobileMenuOpen(false); handleDrawBracketsClick(); }}
+                      title={BUTTON_HELP.drawBrackets}
                       disabled={editingLocked}
                       className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-black px-4 py-3 text-xs uppercase tracking-widest rounded shadow transition text-center disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                     >
@@ -1575,6 +1618,7 @@
                     {readOnlyView || finishedAt ? null : !isLocked ? (
                       <button
                         onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
+                        title={isLocked ? BUTTON_HELP.unlock : BUTTON_HELP.adminLock}
                         className="w-full bg-gray-900 hover:bg-black text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center border border-gray-700"
                       >
                         🔓 Admin Lock
@@ -1582,6 +1626,7 @@
                     ) : (
                       <button
                         onClick={() => { setIsMobileMenuOpen(false); setShowPinModal(true); }}
+                        title={isLocked ? BUTTON_HELP.unlock : BUTTON_HELP.adminLock}
                         className="w-full bg-rose-700 hover:bg-rose-800 text-white text-xs py-3 rounded font-bold uppercase tracking-wider transition text-center"
                       >
                         🔒 View Only (Unlock)
@@ -1591,6 +1636,7 @@
 
                   <button 
                     onClick={() => setIsMobileMenuOpen(false)}
+                    title={BUTTON_HELP.closeMenu}
                     className="w-full mt-2 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-2 rounded font-semibold transition"
                   >
                     Close
@@ -1608,6 +1654,7 @@
                 <span><span>📄</span> Read-only view of &ldquo;{readOnlyView.name}&rdquo; from {readOnlyView.source}. Nothing is saved.</span>
                 <button
                   onClick={closeReadOnlyView}
+                  title={BUTTON_HELP.closeView}
                   className="bg-sky-700 hover:bg-sky-600 text-white px-3 py-1 rounded font-bold flex-shrink-0"
                 >
                   Close View
@@ -1624,7 +1671,7 @@
                   {publishStatus.kind === 'error' && "Couldn't reach Firebase, so the latest change isn't published yet. It goes with the next one."}
                   {publishStatus.kind === 'start-error' && "Couldn't reach Firebase, so this tournament isn't published. It runs normally in this browser."}
                 </span>
-                <button onClick={() => setPublishStatus(null)} className="bg-amber-800 hover:bg-amber-700 text-white px-3 py-1 rounded font-bold flex-shrink-0">
+                <button onClick={() => setPublishStatus(null)} title={BUTTON_HELP.dismiss} className="bg-amber-800 hover:bg-amber-700 text-white px-3 py-1 rounded font-bold flex-shrink-0">
                   Dismiss
                 </button>
               </div>
@@ -1949,6 +1996,10 @@
                         Pick the tournament and enter its publisher code, or choose a saved code file. This browser then
                         opens the tournament and publishes its changes.
                       </p>
+                      <p className="text-[11px] text-gray-400">
+                        Use this when a tournament is being run from another browser, for example when moving to a different
+                        laptop. The code is on that browser's Publishing screen.
+                      </p>
                       {takeOver.list === null && <p className="text-xs text-gray-400 italic">Looking for published tournaments…</p>}
                       {takeOver.unavailable && <p className="text-xs text-amber-300">Firebase can't be reached right now.</p>}
                       <div className="space-y-1">
@@ -1980,6 +2031,13 @@
                         onChange={handleCodeFile}
                         className="hidden"
                       />
+                      <p data-testid="take-over-help" className="text-[11px] text-gray-400">
+                        <strong className="text-gray-300">Choose Code File</strong> loads a <code>.publisher-code.txt</code> file
+                        saved on the other browser and fills in the tournament and code. <strong className="text-gray-300">Take
+                        Over</strong> downloads the published tournament, opens it here, and publishes its changes from now on.
+                        The other browser stops publishing and says so. If this browser already publishes a tournament, you're
+                        asked first, because a browser publishes one at a time.
+                      </p>
                       <div className="flex gap-2">
                         <button
                           onClick={() => codeFileInput.current.click()}
@@ -2001,6 +2059,7 @@
                       >
                         Back
                       </button>
+                      <p className="text-[11px] text-gray-400"><strong className="text-gray-300">Back</strong> returns to the publishing summary without changing anything.</p>
                     </div>
                   ) : (
                     <React.Fragment>
@@ -2008,12 +2067,21 @@
                         {isPublishingHere ? (
                           <React.Fragment>
                             <p className="text-emerald-300 font-bold">Live in slot {publishing.slot}. Anyone can follow it in Display Mode.</p>
+                            <p data-testid="publishing-help" className="text-[11px] text-gray-400">
+                              Changes to the tables, standings and match history are sent within 5 seconds. Viewers can't edit
+                              anything, and the PIN is never sent. The slot frees 24 hours after the last change.
+                            </p>
                             <div>
                               <span className="block text-[11px] text-gray-400 uppercase tracking-wider">Viewer link</span>
                               <code data-testid="viewer-link" className="block break-all text-white">{remoteTournamentUrl(window.location.href, tournamentId, displayLayout)}</code>
                               <button onClick={() => copyText(remoteTournamentUrl(window.location.href, tournamentId, displayLayout))} className="mt-1 bg-cfc-panelLight hover:bg-gray-700 text-white text-xs px-2.5 py-1 rounded font-semibold">
                                 Copy Link
                               </button>
+                              <p className="text-[11px] text-gray-400 mt-1">
+                                Opens this tournament's live board on any phone, tablet or TV, in this screen's display layout.
+                                <strong className="text-gray-300"> Copy Link</strong> puts it on the clipboard to share. The QR icon
+                                in Display Mode shows the same link.
+                              </p>
                             </div>
                             <div>
                               <span className="block text-[11px] text-gray-400 uppercase tracking-wider">Publisher code</span>
@@ -2026,16 +2094,34 @@
                                   Save Code to File
                                 </button>
                               </div>
+                              <p className="text-[11px] text-gray-400 mt-1">
+                                Lets another browser carry on publishing this tournament, for example if this laptop's battery dies.
+                                <strong className="text-gray-300"> Copy Code</strong> puts it on the clipboard.
+                                <strong className="text-gray-300"> Save Code to File</strong> downloads a text file with the code and
+                                viewer link, which the other browser can load with Choose Code File.
+                              </p>
                               <p className="text-[11px] text-amber-300 mt-1">Anyone with this code can take over publishing. Keep it private.</p>
                             </div>
                           </React.Fragment>
                         ) : publishing ? (
-                          <p>
-                            This browser publishes &ldquo;{savedTournamentName(storage, publishing.tournamentId)}&rdquo;. Open it from
-                            Saved Tournaments to keep publishing its changes.
-                          </p>
+                          <React.Fragment>
+                            <p>
+                              This browser publishes &ldquo;{savedTournamentName(storage, publishing.tournamentId)}&rdquo;. Open it from
+                              Saved Tournaments to keep publishing its changes.
+                            </p>
+                            <p data-testid="publishing-help" className="text-[11px] text-gray-400">
+                              The tournament on screen stays on this browser only. Changes to the published one are sent again as
+                              soon as it's open. Pressing New Tournament asks whether to replace the published one.
+                            </p>
+                          </React.Fragment>
                         ) : (
-                          <p>This tournament isn't published. Pressing New Tournament publishes the new one.</p>
+                          <React.Fragment>
+                            <p>This tournament isn't published. Pressing New Tournament publishes the new one.</p>
+                            <p data-testid="publishing-help" className="text-[11px] text-gray-400">
+                              Publishing shares a read-only live copy that anyone can follow in Display Mode or import. Editing stays
+                              on this browser.
+                            </p>
+                          </React.Fragment>
                         )}
                       </div>
                       <button
@@ -2045,6 +2131,11 @@
                       >
                         Take Over Publishing…
                       </button>
+                      <p className="text-[11px] text-gray-400">
+                        {!canLeaveTournament
+                          ? 'Unlock Admin Lock to take over publishing.'
+                          : 'Moves a tournament published from another browser to this one, using its publisher code. You pick the tournament on the next screen.'}
+                      </p>
                     </React.Fragment>
                   )}
                   <button
@@ -2053,6 +2144,7 @@
                   >
                     Close
                   </button>
+                  <p className="text-[11px] text-gray-400 text-center">Closing this window doesn't stop publishing.</p>
                 </div>
               </div>
             )}
@@ -2476,12 +2568,14 @@
             <div className="flex border-b border-cfc-border gap-6">
               <button 
                 onClick={() => setActiveTab('pool')}
+                title={BUTTON_HELP.monsterTab}
                 className={`pb-3 text-sm font-black uppercase tracking-wider border-b-2 transition ${activeTab === 'pool' ? 'border-cfc-red text-cfc-red' : 'border-transparent text-gray-400 hover:text-white'}`}
               >
                 🎲 Monster / Open Play Stage
               </button>
                 <button 
                   onClick={() => setActiveTab('bracket')}
+                  title={BUTTON_HELP.bracketTab}
                   className={`pb-3 text-sm font-black uppercase tracking-wider border-b-2 transition flex items-center gap-1.5 ${
                     activeTab === 'bracket' ? 'border-cfc-red text-cfc-red' : 'border-transparent text-gray-400 hover:text-white'
                   }`}
@@ -2571,6 +2665,7 @@
                       <button
                         onClick={handleDrawMatch}
                         disabled={editingLocked}
+                        title={BUTTON_HELP.drawMatch}
                         className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition shadow-md disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                       >
                         🎲 Draw New Match
@@ -2583,6 +2678,7 @@
                         <button
                           onClick={() => setShowClearMatchesWarning(true)}
                           disabled={editingLocked}
+                          title={BUTTON_HELP.clearMatches}
                           className="flex-1 bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Clear Matches
@@ -2590,6 +2686,7 @@
                         <button
                           onClick={() => setShowNewTournamentWarning(true)}
                           disabled={!canLeaveTournament}
+                          title={remote ? BUTTON_HELP.newTournamentPublished : BUTTON_HELP.newTournament}
                           className="flex-1 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/80 text-rose-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           New Tournament
@@ -2598,6 +2695,7 @@
                       <button
                         onClick={openSavedTournaments}
                         disabled={readOnlyView !== null}
+                        title={BUTTON_HELP.savedTournaments}
                         className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         Saved Tournaments
@@ -2607,6 +2705,7 @@
                           onClick={() => setShowPublishing(true)}
                           disabled={readOnlyView !== null}
                           data-testid="publishing-button"
+                          title={BUTTON_HELP.publishing}
                           className="w-full bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-300 text-xs py-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           📡 Publishing{isPublishingHere ? ' · Live' : ''}
@@ -2657,7 +2756,7 @@
                           );
                         })()}
                       </div>
-                      <button type="submit" disabled={editingLocked} className="bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-white px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed">
+                      <button type="submit" disabled={editingLocked} title={BUTTON_HELP.addPlayer} className="bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-white px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed">
                         Add Player
                       </button>
                     </form>
@@ -2669,6 +2768,7 @@
                       <button
                         onClick={openLeaderboardPicker}
                         disabled={editingLocked}
+                        title={BUTTON_HELP.addFromLeaderboard}
                         className="bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border hover:border-cfc-red text-gray-200 px-3 py-1 rounded text-[11px] font-bold uppercase tracking-wider transition flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         + Add from Leaderboard
@@ -2690,7 +2790,7 @@
                                 className="w-full min-w-0 bg-cfc-panel border border-cfc-border text-xs px-2 py-1 rounded text-white disabled:opacity-50"
                                 autoFocus
                               />
-                              <button onClick={() => savePlayerName(p.id)} disabled={editingLocked} className="text-xs bg-emerald-700 px-2 py-1 rounded text-white flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
+                              <button onClick={() => savePlayerName(p.id)} disabled={editingLocked} title={BUTTON_HELP.saveName} className="text-xs bg-emerald-700 px-2 py-1 rounded text-white flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed">✓</button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -2715,6 +2815,7 @@
                             <button
                               onClick={() => togglePaid(p.id)}
                               disabled={editingLocked}
+                              title={BUTTON_HELP.paid}
                               className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
                             >
                               {p.paid ? 'Paid' : 'Unpaid'}
@@ -2723,6 +2824,7 @@
                             <button
                               onClick={() => toggleActive(p.id)}
                               disabled={editingLocked}
+                              title={BUTTON_HELP.active}
                               className={`text-[10px] px-2 py-0.5 rounded font-mono disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
                             >
                               {p.active ? 'Active' : 'Paused'}
@@ -2732,7 +2834,7 @@
                               onClick={() => startEditingPlayer(p)}
                               disabled={editingLocked}
                               className="text-xs text-gray-400 hover:text-white px-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title="Edit Name"
+                              title={BUTTON_HELP.editName}
                             >
                               ✏️
                             </button>
@@ -2741,7 +2843,7 @@
                               onClick={() => handleRemovePlayer(p.id)}
                               disabled={editingLocked}
                               className="text-xs text-rose-400 hover:text-rose-300 px-1 disabled:opacity-40 disabled:cursor-not-allowed"
-                              title="Delete Player"
+                              title={BUTTON_HELP.deletePlayer}
                             >
                               🗑️
                             </button>
@@ -2752,7 +2854,8 @@
                             <button
                               onClick={() => setOpenActionMenuId(openActionMenuId === p.id ? null : p.id)}
                               className="text-gray-400 hover:text-white px-2 py-1 text-base leading-none"
-                              title="Player options"
+                              title={BUTTON_HELP.playerMenu}
+                              data-testid="player-menu-button"
                             >
                               ⋮
                             </button>
@@ -2763,6 +2866,7 @@
                                   <button
                                     onClick={() => { togglePaid(p.id); setOpenActionMenuId(null); }}
                                     disabled={editingLocked}
+                                    title={BUTTON_HELP.paid}
                                     className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.paid ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800' : 'bg-rose-950/80 text-rose-400 border border-rose-800'}`}
                                   >
                                     {p.paid ? 'Paid' : 'Unpaid'}
@@ -2770,6 +2874,7 @@
                                   <button
                                     onClick={() => { toggleActive(p.id); setOpenActionMenuId(null); }}
                                     disabled={editingLocked}
+                                    title={BUTTON_HELP.active}
                                     className={`text-[10px] px-2 py-1 rounded font-mono text-left disabled:opacity-40 disabled:cursor-not-allowed ${p.active ? 'bg-cfc-panelLight text-white border border-cfc-border' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}
                                   >
                                     {p.active ? 'Active' : 'Paused'}
@@ -2777,6 +2882,7 @@
                                   <button
                                     onClick={() => { startEditingPlayer(p); setOpenActionMenuId(null); }}
                                     disabled={editingLocked}
+                                    title={BUTTON_HELP.editName}
                                     className="text-xs text-gray-300 hover:text-white px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     ✏️ Edit Name
@@ -2784,6 +2890,7 @@
                                   <button
                                     onClick={() => { handleRemovePlayer(p.id); setOpenActionMenuId(null); }}
                                     disabled={editingLocked}
+                                    title={BUTTON_HELP.deletePlayer}
                                     className="text-xs text-rose-400 hover:text-rose-300 px-2 py-1 text-left disabled:opacity-40 disabled:cursor-not-allowed"
                                   >
                                     🗑️ Delete Player
@@ -2821,6 +2928,7 @@
                                 <button
                                   onClick={() => handleDeleteMatch(activeMatch.id)}
                                   disabled={editingLocked}
+                                  title={BUTTON_HELP.deleteMatch}
                                   className="text-xs bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 px-2 py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   🗑️ Delete
@@ -2898,6 +3006,7 @@
                               <button
                                 onClick={() => completeMatch(activeMatch.id)}
                                 disabled={!calculatedWinner || editingLocked}
+                                title={BUTTON_HELP.finishMatch}
                                 className={`w-full py-2.5 rounded font-bold text-xs uppercase tracking-wider transition ${calculatedWinner && !editingLocked ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md' : 'bg-cfc-dark border border-cfc-border text-gray-600 cursor-not-allowed'}`}
                               >
                                 {calculatedWinner ? `Finish Match (Winner: Team ${calculatedWinner})` : 'Enter Winning Scores to Finish'}
@@ -3015,6 +3124,7 @@
                     <button
                       onClick={handleDrawBracketsClick}
                       disabled={editingLocked}
+                      title={BUTTON_HELP.drawBracketStage}
                       className="bg-cfc-red hover:bg-cfc-redHover text-white font-bold px-5 py-2.5 rounded text-xs uppercase tracking-wider transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-cfc-red"
                     >
                       Draw Bracket Stage
@@ -3036,6 +3146,7 @@
                         {bracketData.isCompleted && (
                           <button 
                             onClick={() => setShowWinnerModal(true)}
+                            title={BUTTON_HELP.standings}
                             className="flex-1 md:flex-none bg-yellow-600 hover:bg-yellow-500 text-white font-bold px-3 py-2 rounded text-xs transition uppercase tracking-wider flex items-center justify-center gap-1"
                           >
                             <span>🏆</span> Standings
@@ -3044,6 +3155,7 @@
                         <button
                           onClick={handleDrawBracketsClick}
                           disabled={editingLocked}
+                          title={BUTTON_HELP.redrawBrackets}
                           className="flex-1 md:flex-none bg-cfc-dark hover:bg-cfc-panelLight border border-cfc-border text-gray-200 font-bold px-4 py-2 rounded text-xs transition uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           Reset / Redraw Brackets

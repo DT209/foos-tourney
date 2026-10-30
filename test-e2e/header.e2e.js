@@ -109,3 +109,51 @@ describe('club logo', () => {
     assert.equal(await app.page.$eval('header img', img => img.style.display), 'none');
   });
 });
+
+describe('hover help', () => {
+  // Visible buttons with no title, outside dialogs (the phone menu counts as the page).
+  const untitled = () =>
+    app.page.$$eval('button', bs =>
+      bs
+        .filter(b => b.offsetParent !== null && !b.title)
+        .filter(b => !b.closest('.fixed.inset-0') || b.closest('[data-testid="mobile-menu"]'))
+        .map(b => b.textContent.trim())
+    );
+
+  it('explains every control-desk button', async () => {
+    app = await openApp({ remote: true });
+    await app.addAllLeaderboardPlayers();
+    await app.click('Draw New Match');
+    await app.click('✏️');
+    assert.deepEqual(await untitled(), []);
+    assert.match(
+      await app.page.$eval('[data-testid="publishing-button"]', b => b.title),
+      /live viewer link and publisher code/
+    );
+    assert.match(await app.page.$eval('button[title*="empty tournament"]', b => b.title), /publishes it live/);
+
+    await app.click('Bracket Playoff Stage');
+    assert.deepEqual(await untitled(), []);
+    await app.click('Monster / Open Play Stage');
+    await app.buildBracket({ teams: 2 });
+    assert.deepEqual(await untitled(), []);
+
+    await app.click('Admin Lock');
+    await app.submitPin('1234');
+    assert.match(await app.page.$eval('button[title*="PIN"]', b => b.title), /turns editing back on/);
+    assert.deepEqual(await untitled(), []);
+  });
+
+  it('explains the phone menu and player options', async () => {
+    app = await openApp({ viewport: PHONE });
+    await app.addAllLeaderboardPlayers();
+    await app.click('⋮');
+    assert.deepEqual(await untitled(), []);
+    await app.click('☰');
+    assert.deepEqual(await untitled(), []);
+    assert.match(
+      await app.page.$eval(`${menu} button[title*="full-screen"]`, b => b.title),
+      /Exit Display returns here/
+    );
+  });
+});

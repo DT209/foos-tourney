@@ -103,6 +103,9 @@ describe('starting to publish', () => {
     assert.deepEqual(await methods(), []);
     await app.click('Publishing');
     assert.match(await app.textOf(DIALOG), /This tournament isn't published/);
+    assert.match(await app.textOf('[data-testid="publishing-help"]'), /read-only live copy/);
+    assert.match(await app.textOf(DIALOG), /Moves a tournament published from another browser/);
+    assert.match(await app.textOf(DIALOG), /doesn't stop publishing/);
     await app.click('Close', { within: DIALOG });
   });
 
@@ -124,6 +127,9 @@ describe('starting to publish', () => {
     await app.click('Publishing');
     const dialog = await app.textOf(DIALOG);
     assert.match(dialog, /Live in slot 1/);
+    assert.match(await app.textOf('[data-testid="publishing-help"]'), /sent within 5 seconds/);
+    assert.match(dialog, /Copy Link puts it on the clipboard/);
+    assert.match(dialog, /Save Code to File downloads a text file/);
     assert.match(await app.textOf('[data-testid="viewer-link"]'), new RegExp(`\\?remote=${id}&layout=top-50-50$`));
     const code = await app.textOf('[data-testid="publisher-code"]');
     assert.match(code, /^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
@@ -202,6 +208,7 @@ describe('sending changes', () => {
     assert.equal((await writes()).length, 0, 'the local tournament is not published');
     await app.click('Publishing');
     assert.match(await app.textOf(DIALOG), /This browser publishes “Thursday DYP”/);
+    assert.match(await app.textOf('[data-testid="publishing-help"]'), /asks whether to replace/);
     await app.click('Close', { within: DIALOG });
 
     await app.click('Saved Tournaments');
@@ -314,6 +321,15 @@ describe('failures', () => {
 });
 
 describe('taking over', () => {
+  it('explains that the admin lock blocks taking over', async () => {
+    app = await openApp({ remote: true });
+    await app.click('Admin Lock');
+    await app.submitPin('1234');
+    await app.click('Publishing');
+    assert.match(await app.textOf(DIALOG), /Unlock Admin Lock to take over publishing/);
+    await app.click('Close', { within: DIALOG });
+  });
+
   it('needs the right code, then opens the tournament and publishes from here', async () => {
     app = await openApp({ remote: true });
     await seedOther();
@@ -321,6 +337,7 @@ describe('taking over', () => {
     await app.click('Take Over Publishing');
     await waitFor(async () => (await app.page.$$('[data-testid="take-over-choice"]')).length === 1);
     assert.match(await app.textOf('[data-testid="take-over"]'), /Other Night/);
+    assert.match(await app.textOf('[data-testid="take-over-help"]'), /opens it here, and publishes its changes/);
     await app.page.$eval('[data-testid="take-over-choice"] input', i => i.click());
     await app.fill('[data-testid="take-over-code"]', 'WRNG-2345-EFGH');
     await app.click('Take Over', { within: '[data-testid="take-over"]' });

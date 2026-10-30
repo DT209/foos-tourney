@@ -170,7 +170,7 @@ describe('editing players (narrow screen menu)', () => {
     assert.equal(await app.page.$('[data-testid="action-menu-backdrop"]'), null);
 
     await openMenu();
-    await app.page.$eval(`${row('Andrew')} [title="Player options"]`, b => b.click());
+    await app.page.$eval(`${row('Andrew')} [data-testid="player-menu-button"]`, b => b.click());
     await app.pause();
     assert.equal(await app.page.$('[data-testid="action-menu-backdrop"]'), null, '⋮ again closes it');
 
