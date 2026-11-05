@@ -1,0 +1,6 @@
+# Keep LF line endings on every platform: Prettier and the script version
+# stamps (SHA-256 of each script) fail on CRLF checkouts, e.g. Windows with
+# core.autocrlf=true.
+* text=auto eol=lf
+*.png binary
+*.ico binary
