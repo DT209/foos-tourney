@@ -441,6 +441,42 @@ describe('createBracket', () => {
     const { random: _random, ...rest } = opts;
     assert.ok(L.createBracket({ ...rest, seedingStrategy: 'random' }).bracket);
   });
+
+  // Issue #3: manual pairings weren't checked for repeated players or empty teams.
+  it('manual pairings: rejects empty teams and repeated players, allows one-player teams', () => {
+    const [p1, p2, p3, p4] = opts.rankedPlayers;
+    const manual = customTeams => L.createBracket({ ...opts, teamFormationStrategy: 'manual', customTeams });
+    assert.deepEqual(
+      manual([
+        { p1, p2 },
+        { p1: null, p2: undefined },
+        { p1: p3, p2: p4 }
+      ]),
+      { error: 'Team 2 has no players. Pick at least one player for every team.' }
+    );
+    assert.deepEqual(manual([{ p1, p2: p1 }]), {
+      error: 'P1 is picked more than once. Each player can only be on one team.'
+    });
+    assert.deepEqual(
+      manual([
+        { p1, p2 },
+        { p1: p3, p2 }
+      ]),
+      { error: 'P2 is picked more than once. Each player can only be on one team.' }
+    );
+    const ok = manual([
+      { p1, p2 },
+      { p1: p3, p2: null },
+      { p1: null, p2: p4 }
+    ]);
+    assert.ok(ok.bracket);
+    assert.deepEqual(
+      ok.bracket.originalTeams.map(t => t.name),
+      ['P1 & P2', 'P3', 'P4']
+    );
+    // 1v1 never forms teams, so manual pairings aren't consulted.
+    assert.ok(L.createBracket({ ...opts, format: '1v1', teamFormationStrategy: 'manual', customTeams: [{}] }).bracket);
+  });
 });
 
 describe('resetBracket / clearMatchResults', () => {

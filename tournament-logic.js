@@ -118,6 +118,29 @@ globalThis.TournamentLogic = (() => {
     };
   }
 
+  // Settings a New Tournament keeps from the current one, so a weekly event
+  // isn't set up from scratch. Players, matches, the bracket and the lock reset.
+  const CARRIED_SETTINGS = [
+    'tournamentName',
+    'tableCount',
+    'format',
+    'maxGames',
+    'bracketTeamCount',
+    'bracketElimType',
+    'bracketMaxGames',
+    'teamFormationStrategy',
+    'seedingStrategy',
+    'adminPin'
+  ];
+
+  function nextTournamentState(current, id, now) {
+    const fresh = newTournamentState(id, now);
+    CARRIED_SETTINGS.forEach(key => {
+      if (current[key] !== undefined) fresh[key] = current[key];
+    });
+    return fresh;
+  }
+
   const PERSISTED_FIELDS = Object.keys(newTournamentState('', new Date(0)));
 
   const isPlainObject = v => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -673,16 +696,30 @@ globalThis.TournamentLogic = (() => {
   }
 
   // Monster-stage standings: win % first, then average goal differential.
+  // Ranks by win rate, then goal difference per match, compared exactly (the
+  // 1-decimal strings are for display). Players with no matches rank last, so
+  // they never qualify for a bracket ahead of someone who played. Remaining
+  // ties keep roster order.
   function computeStandings(players) {
     return players
       .map(p => {
         const totalGames = p.wins + p.losses;
-        const winPct = totalGames > 0 ? ((p.wins / totalGames) * 100).toFixed(1) : '0.0';
         const diff = p.gf - p.ga;
-        const avgDiff = totalGames > 0 ? (diff / totalGames).toFixed(1) : '0.0';
-        return { ...p, totalGames, winPct, diff, avgDiff };
+        const winRate = totalGames > 0 ? p.wins / totalGames : 0;
+        const diffRate = totalGames > 0 ? diff / totalGames : 0;
+        return {
+          ...p,
+          totalGames,
+          winPct: (winRate * 100).toFixed(1),
+          diff,
+          avgDiff: diffRate.toFixed(1),
+          rank: { played: totalGames > 0 ? 1 : 0, winRate, diffRate }
+        };
       })
-      .sort((a, b) => parseFloat(b.winPct) - parseFloat(a.winPct) || parseFloat(b.avgDiff) - parseFloat(a.avgDiff));
+      .sort(
+        (a, b) => b.rank.played - a.rank.played || b.rank.winRate - a.rank.winRate || b.rank.diffRate - a.rank.diffRate
+      )
+      .map(({ rank: _rank, ...row }) => row);
   }
 
   // --- Leaderboard picker & autocomplete ---
@@ -931,7 +968,6 @@ globalThis.TournamentLogic = (() => {
 
     let t1Wins = 0;
     let t2Wins = 0;
-    const winsNeeded = Math.ceil(match.games.length / 2);
 
     for (const g of match.games) {
       const s1 = parseInt(g.t1, 10);
@@ -942,8 +978,11 @@ globalThis.TournamentLogic = (() => {
       }
     }
 
-    if (t1Wins >= winsNeeded) return 1;
-    if (t2Wins >= winsNeeded) return 2;
+    // A strict majority of the games: with an even count a tied split (or a
+    // match with no games) has no winner.
+    const half = match.games.length / 2;
+    if (t1Wins > half) return 1;
+    if (t2Wins > half) return 2;
     return null;
   }
 
@@ -959,11 +998,16 @@ globalThis.TournamentLogic = (() => {
       return { error: 'Cannot complete match: No team has secured enough game wins.' };
     }
 
+    // Goals count only from games with both scores entered (ties included),
+    // the same games Match History and the CSV show.
     let t1TotalGoals = 0;
     let t2TotalGoals = 0;
     match.games.forEach(g => {
-      t1TotalGoals += parseInt(g.t1, 10) || 0;
-      t2TotalGoals += parseInt(g.t2, 10) || 0;
+      const s1 = parseInt(g.t1, 10);
+      const s2 = parseInt(g.t2, 10);
+      if (isNaN(s1) || isNaN(s2)) return;
+      t1TotalGoals += s1;
+      t2TotalGoals += s2;
     });
 
     const updatedPlayers = players.map(p => {
@@ -1155,6 +1199,21 @@ globalThis.TournamentLogic = (() => {
     return customTeams.map((team, idx) => (idx === teamIndex ? { ...team, [slot]: player } : team));
   }
 
+  // Manual pairings must give every team at least one player (a one-player
+  // team is allowed) and use each player once. Returns a message, or null.
+  function manualTeamsError(customTeams) {
+    const seen = new Set();
+    for (let i = 0; i < customTeams.length; i++) {
+      const members = [customTeams[i].p1, customTeams[i].p2].filter(Boolean);
+      if (members.length === 0) return `Team ${i + 1} has no players. Pick at least one player for every team.`;
+      for (const p of members) {
+        if (seen.has(p.id)) return `${p.name} is picked more than once. Each player can only be on one team.`;
+        seen.add(p.id);
+      }
+    }
+    return null;
+  }
+
   // The team-count input accepts free text; returns the number to rebuild
   // manual teams with, or null while the field is blank/non-numeric.
   function parseTeamCountInput(value) {
@@ -1276,7 +1335,9 @@ globalThis.TournamentLogic = (() => {
 
     if (elimType === 'single') {
       grandFinals = [createMatchSlot(numRounds, 0, 'grandFinal', 'Grand Finals')];
-      if (numRounds >= 2) {
+      // With 3 teams one semi-final is a BYE, so the other semi-final's loser
+      // is 3rd outright: there's no 3rd place match to play.
+      if (numTeams >= 4) {
         thirdPlaceMatch = createMatchSlot(numRounds, 1, 'thirdPlace', '3rd / 4th Place Match');
       }
     } else if (elimType === 'double' || elimType === 'championship') {
@@ -1407,6 +1468,11 @@ globalThis.TournamentLogic = (() => {
       };
     }
 
+    if (format === '2v2' && teamFormationStrategy === 'manual') {
+      const error = manualTeamsError(customTeams);
+      if (error) return { error };
+    }
+
     const teams = buildBracketTeams(
       rankedPlayers,
       parsedTeamCount,
@@ -1527,16 +1593,9 @@ globalThis.TournamentLogic = (() => {
       tpm.hasPropagatedT2 = true;
     }
 
-    if (tpm.team1 && tpm.team2) {
-      const t1Bye = tpm.team1.isBye;
-      const t2Bye = tpm.team2.isBye;
-      if (t1Bye || t2Bye) {
-        tpm.winner = t1Bye && !t2Bye ? 2 : 1;
-        tpm.status = 'DONE';
-      } else {
-        tpm.status = 'READY';
-      }
-    }
+    // Only confirmed semi-finals drop a loser here, and those always have two
+    // real teams (a 3-team bracket has no 3rd place match).
+    if (bothRealTeams(tpm)) tpm.status = 'READY';
   }
 
   // Double / Championship: the loser drops into the Losers Bracket.
@@ -1633,6 +1692,9 @@ globalThis.TournamentLogic = (() => {
     const updated = { ...bracket };
     const match = getBracketMatch(updated, section, rIdx, mIdx);
 
+    if (!bothRealTeams(match)) {
+      return { error: 'Cannot complete match: both teams must be known first.' };
+    }
     const winner = getMatchWinner(match);
     if (!winner) {
       return { error: 'Cannot complete match: No team has won enough games.' };
@@ -1659,7 +1721,7 @@ globalThis.TournamentLogic = (() => {
 
     const standings = [];
     const push = (place, team) => {
-      if (team) standings.push({ place, team });
+      if (team && !team.isBye) standings.push({ place, team });
     };
     const winnerOf = m => (m.winner === 1 ? m.team1 : m.team2);
     const loserOf = m => (m.winner === 1 ? m.team2 : m.team1);
@@ -1783,6 +1845,40 @@ globalThis.TournamentLogic = (() => {
     });
 
     return activeAssignments;
+  }
+
+  // Checks lowering Tables Available to `newCount`. A live Monster match on a
+  // removed table must be finished or deleted first ({ error }). Bracket
+  // matches on removed tables need a confirm ({ confirm: message }): they go
+  // back in the queue for the next free table. {} when nothing is affected.
+  function checkTableCountChange(matches, bracketData, newCount) {
+    const monster = matches.filter(m => m.status === 'LIVE' && m.table > newCount).map(m => m.table);
+    if (monster.length > 0) {
+      return {
+        error: `Table ${monster.join(', ')} has an open-play match in progress. Finish or delete it before removing the table.`
+      };
+    }
+    const bracket = bracketData
+      ? listBracketMatches(bracketData).filter(({ match }) => match.status !== 'DONE' && match.table > newCount)
+      : [];
+    if (bracket.length === 0) return {};
+    const lines = bracket.map(({ match }) => {
+      const teams = `${bracketTeamName(match.team1)} vs ${bracketTeamName(match.team2)}`;
+      return `Table ${match.table}: ${match.label} (${teams})`;
+    });
+    return {
+      confirm: `A bracket match is drawn on a table you're removing:\n\n${lines.join('\n')}\n\nReduce to ${newCount} ${newCount === 1 ? 'table' : 'tables'} anyway? The match moves to the next free table and keeps any scores entered.`
+    };
+  }
+
+  // Takes bracket matches off tables above `newCount` so assignBracketTables
+  // gives them the next free table. Returns a new bracket reference.
+  function releaseBracketTables(bracketData, newCount) {
+    if (!bracketData) return bracketData;
+    listBracketMatches(bracketData).forEach(({ match }) => {
+      if (match.status !== 'DONE' && match.table > newCount) match.table = null;
+    });
+    return { ...bracketData };
   }
 
   // Visual state of a bracket match card: 'done', 'tabled' (on a table),
@@ -2623,6 +2719,7 @@ globalThis.TournamentLogic = (() => {
     createTournamentId,
     randomUuid,
     newTournamentState,
+    nextTournamentState,
     restoreTournamentState,
     localIsoDate,
     tournamentDate,
@@ -2687,6 +2784,7 @@ globalThis.TournamentLogic = (() => {
     buildManualTeams,
     getManualTeamCandidates,
     setManualTeamPlayer,
+    manualTeamsError,
     parseTeamCountInput,
     processLoserBracketByes,
     advanceLoserWinner,
@@ -2706,6 +2804,9 @@ globalThis.TournamentLogic = (() => {
     placeMedal,
     listBracketMatches,
     assignBracketTables,
+    checkTableCountChange,
+    releaseBracketTables,
+    bothRealTeams,
     getMatchCardState,
     bracketTeamName,
     // history & export

@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=8a6a5bf798"></script>
+  <script src="tournament-logic.js?v=3b36e7a058"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -164,7 +164,7 @@
     // All tournament behaviour lives in tournament-logic.js (tested under test/).
     const {
       sanitizeTypedText, submitPin, forgetPin, getLeaderboardInfo,
-      createTournamentId, newTournamentState, restoreTournamentState,
+      createTournamentId, restoreTournamentState,
       saveTournament, loadTournament, loadCurrentTournament, listTournaments, deleteTournament, tournamentExists, recentTournamentPlayers, withRecentPlayers, getBrowserStorage,
       serializeTournamentExport, tournamentExportFileName, parseTournamentExport, storeImportedTournament, downloadText,
       fetchLeaderboardPlayers, FALLBACK_LEADERBOARD_PLAYERS, FALLBACK_LEADERBOARD_DATE,
@@ -174,7 +174,7 @@
       drawMonsterMatch, deleteMatch, updateMonsterGameScore, setMonsterHandicap, setMonsterOverrideWinner,
       getMatchWinner, completeMonsterMatch, findLiveMatchAtTable, teamLabel,
       buildManualTeams, getManualTeamCandidates, setManualTeamPlayer, parseTeamCountInput,
-      createBracket, clearMatchResults,
+      createBracket, clearMatchResults, nextTournamentState, checkTableCountChange, releaseBracketTables, bothRealTeams,
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
       getCompletedMatchesList, formatHistoryRow, tournamentCsv,
@@ -236,6 +236,12 @@
     // REUSABLE MATCH CARD COMPONENT FOR BRACKET
     // ==========================================
 
+    // Team 1 / Team 2 tags on bracket cards, colour-matched to their score boxes.
+    const TEAM_BADGE = {
+      1: 'shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-700',
+      2: 'shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700'
+    };
+
     function MatchCard({ match, onScoreChange, onHandicapToggle, onOverrideWinnerChange, onConfirm, locked }) {
       if (!match) return null;
 
@@ -268,19 +274,38 @@
 
           <div className="space-y-1.5 text-xs">
             <div className={`p-2 rounded flex justify-between items-center ${match.winner === 1 ? 'bg-emerald-950/60 border border-emerald-700/80 font-bold text-white' : 'bg-cfc-panel border border-cfc-border text-gray-300'}`}>
-              <span className="truncate pr-2">{t1Name}</span>
+              <span className="truncate pr-2 flex items-center gap-1.5">
+                <span data-testid="team-badge" className={TEAM_BADGE[1]}>Team 1</span>
+                <span className="truncate">{t1Name}</span>
+              </span>
               {match.winner === 1 && <span className="text-emerald-400 text-xs">✓ Winner</span>}
             </div>
 
             <div className={`p-2 rounded flex justify-between items-center ${match.winner === 2 ? 'bg-emerald-950/60 border border-emerald-700/80 font-bold text-white' : 'bg-cfc-panel border border-cfc-border text-gray-300'}`}>
-              <span className="truncate pr-2">{t2Name}</span>
+              <span className="truncate pr-2 flex items-center gap-1.5">
+                <span data-testid="team-badge" className={TEAM_BADGE[2]}>Team 2</span>
+                <span className="truncate">{t2Name}</span>
+              </span>
               {match.winner === 2 && <span className="text-emerald-400 text-xs">✓ Winner</span>}
             </div>
           </div>
 
-          {match.status !== 'DONE' && (
+          {match.status !== 'DONE' && !bothRealTeams(match) && (
+            <p data-testid="waiting-for-teams" className="pt-1 border-t border-cfc-border/60 text-[11px] text-gray-500 italic">
+              Scores open once both teams are known.
+            </p>
+          )}
+
+          {match.status !== 'DONE' && bothRealTeams(match) && (
             <div className="space-y-2 pt-1 border-t border-cfc-border/60">
               <div className="space-y-1.5">
+                <div className="flex justify-end text-[10px] font-bold uppercase tracking-wider">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-12 text-center text-sky-300">Team 1</span>
+                    <span className="invisible font-bold">-</span>
+                    <span className="w-12 text-center text-amber-300">Team 2</span>
+                  </div>
+                </div>
                 {match.games.map((g, gIdx) => (
                   <div key={gIdx} className="flex items-center justify-between text-xs gap-2">
                     <span className="text-gray-400 font-mono text-[11px]">Game #{gIdx + 1}:</span>
@@ -290,7 +315,8 @@
                         value={g.t1}
                         onChange={e => onScoreChange(gIdx, 't1', e.target.value)}
                         disabled={locked}
-                        className="w-12 bg-cfc-panel border border-cfc-border text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        aria-label={`Game ${gIdx + 1} Team 1 score`}
+                        className="w-12 bg-cfc-panel border-2 border-sky-500/70 text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-sky-300 disabled:opacity-50"
                       />
                       <span className="text-gray-500 font-bold">-</span>
                       <input
@@ -298,7 +324,8 @@
                         value={g.t2}
                         onChange={e => onScoreChange(gIdx, 't2', e.target.value)}
                         disabled={locked}
-                        className="w-12 bg-cfc-panel border border-cfc-border text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-cfc-red disabled:opacity-50"
+                        aria-label={`Game ${gIdx + 1} Team 2 score`}
+                        className="w-12 bg-cfc-panel border-2 border-amber-500/70 text-center rounded py-0.5 text-white font-bold focus:outline-none focus:border-amber-300 disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -1157,11 +1184,16 @@
         setShowWinnerModal(false);
       };
 
-      // Starts a fresh tournament; the current one stays saved under its id.
-      // With publishing set up, a tournament started here is published at once
-      // (the one a first visit creates on its own stays local).
+      // Starts a fresh tournament with the current one's settings and PIN; the
+      // current one stays saved under its id. With publishing set up, a
+      // tournament started here is published at once (the one a first visit
+      // creates on its own stays local).
       const startNewTournament = () => {
-        const fresh = newTournamentState(createTournamentId(), new Date());
+        const current = {
+          tournamentName, tableCount, format, maxGames, bracketTeamCount, bracketElimType, bracketMaxGames,
+          teamFormationStrategy, seedingStrategy, adminPin
+        };
+        const fresh = nextTournamentState(current, createTournamentId(), new Date());
         applyTournament(fresh);
         if (remote) beginPublishing(fresh);
       };
@@ -1306,6 +1338,21 @@
 
       const completedMatchesList = getCompletedMatchesList(matches, bracketData, tournamentId);
 
+
+      // Lowering Tables Available: an open-play match on a removed table must be
+      // finished or deleted first; bracket matches on one move to the next free
+      // table after a confirm.
+      const handleTableCountChange = (value) => {
+        const newCount = parseInt(value, 10);
+        const check = checkTableCountChange(matches, bracketData, newCount);
+        if (check.error) {
+          alert(check.error);
+          return;
+        }
+        if (check.confirm && !confirm(check.confirm)) return;
+        if (check.confirm) setBracketData(releaseBracketTables(bracketData, newCount));
+        setTableCount(newCount);
+      };
 
       // --- MATCH DRAWING & DELETION ---
       const handleDrawMatch = () => {
@@ -2621,7 +2668,7 @@
                         <select
                           value={tableCount}
                           data-testid="table-count-select"
-                          onChange={e => setTableCount(parseInt(e.target.value, 10))}
+                          onChange={e => handleTableCountChange(e.target.value)}
                           disabled={editingLocked}
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red disabled:opacity-50"
                         >

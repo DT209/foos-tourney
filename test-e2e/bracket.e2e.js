@@ -65,10 +65,13 @@ describe('bracket modal', () => {
     await app.type('[data-testid="team-count-input"]', '2');
     await app.select('[data-testid="formation-select"]', 'manual');
     await app.select('[data-testid="seeding-select"]', 'elo');
-    const [p1, p2] = await app.page.$$('[data-testid="manual-team"] select');
+    const [p1, p2, p3, p4] = await app.page.$$('[data-testid="manual-team"] select');
     const options = await p1.$$eval('option', os => os.map(o => o.value).filter(Boolean));
+    // Swap the pre-filled pairs: Team 1 takes players 4 and 3, Team 2 players 1 and 2.
     await p1.select(options[3]);
     await p2.select(options[2]);
+    await p3.select(options[0]);
+    await p4.select(options[1]);
     await app.pause();
     // Clearing a slot shows the placeholder again.
     await p2.select('');

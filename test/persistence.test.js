@@ -111,6 +111,48 @@ describe('newTournamentState / restoreTournamentState', () => {
     });
   });
 
+  // Issue #10: New Tournament reset every setting.
+  it('a following tournament keeps the settings and PIN, resetting players, results and the lock', () => {
+    const current = {
+      ...L.newTournamentState(ID2, new Date(0)),
+      tournamentName: 'Friday Singles',
+      tableCount: 4,
+      format: '1v1',
+      maxGames: 5,
+      activeTab: 'bracket',
+      players: [{ id: 1 }],
+      matches: [{ id: 1 }],
+      bracketData: { type: 'double' },
+      bracketTeamCount: 6,
+      bracketElimType: 'double',
+      bracketMaxGames: 1,
+      teamFormationStrategy: 'manual',
+      seedingStrategy: 'elo',
+      customTeams: [{ p1: null, p2: null }],
+      isLocked: true,
+      adminPin: '1234',
+      finishedAt: '2026-10-17T05:00:00.000Z'
+    };
+    assert.deepEqual(L.nextTournamentState(current, ID, NOW), {
+      ...L.newTournamentState(ID, NOW),
+      tournamentName: 'Friday Singles',
+      tableCount: 4,
+      format: '1v1',
+      maxGames: 5,
+      bracketTeamCount: 6,
+      bracketElimType: 'double',
+      bracketMaxGames: 1,
+      teamFormationStrategy: 'manual',
+      seedingStrategy: 'elo',
+      adminPin: '1234'
+    });
+    // A partial current state falls back to defaults for what's missing.
+    assert.deepEqual(L.nextTournamentState({ tableCount: 3 }, ID, NOW), {
+      ...L.newTournamentState(ID, NOW),
+      tableCount: 3
+    });
+  });
+
   it('restoring nothing starts a new tournament', () => {
     assert.deepEqual(L.restoreTournamentState(null, opts), L.newTournamentState(ID, NOW));
   });

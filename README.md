@@ -85,6 +85,15 @@ flowchart TD
     RS --> F
 ```
 
+- Each card tags its teams **Team 1** (blue) and **Team 2** (amber), and the score boxes use the same colours,
+  so it's clear which column each team's score goes in.
+- A pending card shows no scores or Confirm until both teams are known.
+- With 3 teams in single elimination there's no 3rd place match: the semi-final loser is 3rd.
+- Lowering **Tables Available** mid-bracket asks first when a bracket match is on a removed table. If you go
+  ahead, that match moves to the next free table and keeps any scores entered. An open-play match on a removed
+  table must be finished or deleted first.
+- Manual pairings must give every team at least one player and use each player once.
+
 ## Working with Claude Code
 
 Project conventions for AI-assisted changes (architecture rules, coverage and
@@ -188,7 +197,8 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
 - **Recent players:** people from your previous 3 tournaments (by start time) who aren't on the club
   leaderboard, such as guests, appear in a "Recent players" section of **Add from Leaderboard** and in
   name suggestions. Typing one adds them directly, without the guest prompt.
-- **New Tournament** starts a fresh event, keeps the previous one, and publishes the new one (see
+- **New Tournament** starts a fresh event with the current one's settings (name, tables, format, best-of,
+  bracket options) and admin PIN, unlocked, with an empty roster. It keeps the previous one, and publishes the new one (see
   [Publishing](#publishing-firebase)). **Saved Tournaments** lists past
   events to reopen or delete. The current tournament can't be deleted. The list is ordered by start time, newest first,
   and opening a tournament doesn't change the order.
