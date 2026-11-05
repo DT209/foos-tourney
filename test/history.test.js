@@ -32,7 +32,10 @@ describe('getCompletedMatchesList', () => {
       team1: [ann, bo],
       team2: [cy, di],
       games: monsterDone.games,
-      isHandicap: 'Yes'
+      isHandicap: 'Yes',
+      ref: { kind: 'monster', id: 11 },
+      editable: true,
+      editedAt: null
     });
     assert.deepEqual(list[1], {
       uniqueId: 'tid-1_MONSTER-13',
@@ -41,8 +44,32 @@ describe('getCompletedMatchesList', () => {
       team1: [],
       team2: [],
       games: [],
-      isHandicap: 'No'
+      isHandicap: 'No',
+      ref: { kind: 'monster', id: 13 },
+      editable: true,
+      editedAt: null
     });
+  });
+
+  it('marks edited matches, and only bracket matches with two real teams as editable', () => {
+    const [entry] = L.getCompletedMatchesList([{ ...monsterDone, editedAt: 'T' }], null, 'X');
+    assert.equal(entry.editedAt, 'T');
+    const legacy = L.getCompletedMatchesList([{ ...monsterDone, winner: undefined }], null, 'X');
+    assert.equal(legacy.length, 1);
+    assert.equal(legacy[0].editable, false);
+
+    const b = L.generateBracketStructure(teams(3), 'single', 1);
+    scoreFor(b.winnersRounds[0][1], 1);
+    L.confirmBracketMatch(b, 'winners', 0, 1);
+    b.winnersRounds[0][1].editedAt = 'E';
+    const list = L.getCompletedMatchesList([], b, 'X');
+    assert.deepEqual(
+      list.map(m => [m.ref.id, m.editable, m.editedAt]),
+      [
+        ['m-winners-1-0', false, null],
+        ['m-winners-1-1', true, 'E']
+      ]
+    );
   });
 
   it('collects DONE bracket matches in winners, losers, finals, 3rd place order', () => {

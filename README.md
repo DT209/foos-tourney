@@ -94,6 +94,24 @@ flowchart TD
   table must be finished or deleted first.
 - Manual pairings must give every team at least one player and use each player once.
 
+## Correcting results and substitutions
+
+Both ask for the **admin PIN** every time, even when the tool is unlocked (with no PIN yet, the first use sets
+one). They work while the admin lock is on, but not on a finished tournament or a read-only copy.
+
+- **Edit a finished match:** ✏️ on a Match History row, or ✏️ Edit on a finished bracket card. Change the game
+  scores or the handicap override; for an open-play match, also who played on each side. Player standings are
+  rebuilt from all finished matches, so a corrected line-up credits the right people. Edited matches show
+  "✎ edited".
+- **Bracket edits:** if the winner changes, the new winner and loser take the old ones' places in the matches
+  still to come (next round, Losers Bracket, 3rd place, a Grand Final reset). If a match fed by the result has
+  already been played, the edit is refused. Scores typed into an affected match that isn't confirmed yet are
+  cleared, after a confirm.
+- **Substitute Player** (Tournaments section, or 🔄 Substitute on the bracket): the replacement takes the leaving
+  player's place in their live match and on their bracket team for every match still to come, and the team is
+  renamed. Finished matches keep who played them, in history and the CSV. The leaving player is paused. Add a
+  new replacement to the roster first. Clear Matches rebuilds the bracket with the current line-ups.
+
 ## Working with Claude Code
 
 Project conventions for AI-assisted changes (architecture rules, coverage and

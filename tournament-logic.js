@@ -998,8 +998,16 @@ globalThis.TournamentLogic = (() => {
       return { error: 'Cannot complete match: No team has secured enough game wins.' };
     }
 
-    // Goals count only from games with both scores entered (ties included),
-    // the same games Match History and the CSV show.
+    return {
+      players: creditMatch(players, match, winner),
+      matches: matches.map(m => (m.id === matchId ? { ...m, status: 'DONE', winner } : m))
+    };
+  }
+
+  // Adds one finished Monster match to its players' W/L and goals. Goals count
+  // only from games with both scores entered (ties included), the same games
+  // Match History and the CSV show.
+  function creditMatch(players, match, winner) {
     let t1TotalGoals = 0;
     let t2TotalGoals = 0;
     match.games.forEach(g => {
@@ -1010,7 +1018,7 @@ globalThis.TournamentLogic = (() => {
       t2TotalGoals += s2;
     });
 
-    const updatedPlayers = players.map(p => {
+    return players.map(p => {
       const inTeam1 = match.team1.some(tp => tp.id === p.id);
       const inTeam2 = match.team2.some(tp => tp.id === p.id);
 
@@ -1026,11 +1034,16 @@ globalThis.TournamentLogic = (() => {
         ga: p.ga + (inTeam1 ? t2TotalGoals : t1TotalGoals)
       };
     });
+  }
 
-    return {
-      players: updatedPlayers,
-      matches: matches.map(m => (m.id === matchId ? { ...m, status: 'DONE', winner } : m))
-    };
+  // Rebuilds every player's W/L/GF/GA from the finished Monster matches, so an
+  // edited result or line-up can't leave stale totals behind. Draw-fairness
+  // counters (eligibleDrawsMissed) are kept.
+  function recomputePlayerStats(players, matches) {
+    const zeroed = players.map(p => ({ ...p, wins: 0, losses: 0, gf: 0, ga: 0 }));
+    return matches
+      .filter(m => m.status === 'DONE' && m.winner)
+      .reduce((acc, m) => creditMatch(acc, m, m.winner), zeroed);
   }
 
   function teamLabel(teamPlayers) {
@@ -1895,6 +1908,280 @@ globalThis.TournamentLogic = (() => {
   }
 
   // ==========================================
+  // CORRECTIONS (admin): editing results, substitutions
+  // ==========================================
+  // Rare, impactful changes made mid-event. The page asks for the admin PIN
+  // before each one (authorizeAdminAction), even when the tool is unlocked.
+
+  // With no PIN yet, a valid entry becomes the PIN. Returns { error } or { pin }.
+  function authorizeAdminAction({ pin, input }) {
+    if (pin === null) {
+      if (!PIN_PATTERN.test(input)) return { error: 'Choose a PIN of 4 to 8 digits.' };
+      return { pin: input };
+    }
+    if (input !== pin) return { error: 'Incorrect PIN!' };
+    return { pin };
+  }
+
+  const cloneGames = games => games.map(g => ({ t1: g.t1, t2: g.t2 }));
+  const sameTeams = (a, b) =>
+    Boolean(a.team1 && b.team1 && a.team2 && b.team2) && a.team1.id === b.team1.id && a.team2.id === b.team2.id;
+  const hasProgress = m => m.isHandicap || m.games.some(g => g.t1 !== '' || g.t2 !== '');
+
+  // The editor's starting point for a Match History row's `ref`, or null when
+  // the match can't be edited (gone, not finished, or a BYE).
+  // { kind, id, label, team1Ids, team2Ids (Monster) | team1Name, team2Name (bracket),
+  //   games, isHandicap, overrideWinner }
+  function editDraftFor(ref, matches, bracketData) {
+    const base = m => ({
+      kind: ref.kind,
+      id: m.id,
+      games: cloneGames(m.games),
+      isHandicap: Boolean(m.isHandicap),
+      overrideWinner: m.isHandicap ? m.overrideWinner || 1 : null
+    });
+    if (ref.kind === 'monster') {
+      const m = matches.find(x => x.id === ref.id && x.status === 'DONE');
+      if (!m) return null;
+      return {
+        ...base(m),
+        label: 'Monster match',
+        team1Ids: m.team1.map(p => p.id),
+        team2Ids: m.team2.map(p => p.id),
+        teamPlayers: [...m.team1, ...m.team2]
+      };
+    }
+    const found = bracketData && listBracketMatches(bracketData).find(({ match }) => match.id === ref.id);
+    if (!found || found.match.status !== 'DONE' || !bothRealTeams(found.match)) return null;
+    return {
+      ...base(found.match),
+      label: found.match.label,
+      team1Name: found.match.team1.name,
+      team2Name: found.match.team2.name
+    };
+  }
+
+  function setDraftScore(draft, gIdx, teamKey, value) {
+    const games = cloneGames(draft.games);
+    games[gIdx][teamKey] = normalizeScoreInput(value);
+    return { ...draft, games };
+  }
+
+  function setDraftHandicap(draft, checked) {
+    return { ...draft, isHandicap: checked, overrideWinner: checked ? 1 : null };
+  }
+
+  function setDraftOverrideWinner(draft, winner) {
+    return { ...draft, overrideWinner: Number(winner) };
+  }
+
+  // `team` is 'team1Ids' or 'team2Ids'; `playerId` comes from a <select>.
+  function setDraftPlayer(draft, team, slot, playerId) {
+    const ids = [...draft[team]];
+    ids[slot] = playerId === '' ? null : Number(playerId);
+    return { ...draft, [team]: ids };
+  }
+
+  // Applies an edited Monster result and/or line-up, then rebuilds every
+  // player's stats from the finished matches. Returns { error } or
+  // { players, matches }.
+  function editMonsterMatch(players, matches, draft, now) {
+    const old = matches.find(m => m.id === draft.id && m.status === 'DONE');
+    if (!old) return { error: 'That match is no longer in the history.' };
+
+    const known = [...old.team1, ...old.team2];
+    const ids = [...draft.team1Ids, ...draft.team2Ids];
+    if (ids.some(id => id === null || id === undefined)) return { error: 'Pick a player for every spot.' };
+    const lookup = id => {
+      const p = players.find(x => x.id === id) || known.find(x => x.id === id);
+      return { ...p };
+    };
+    const dup = ids.find((id, i) => ids.indexOf(id) !== i);
+    if (dup !== undefined) return { error: `${lookup(dup).name} is on this match twice.` };
+
+    const edited = {
+      ...old,
+      team1: draft.team1Ids.map(lookup),
+      team2: draft.team2Ids.map(lookup),
+      games: cloneGames(draft.games),
+      isHandicap: draft.isHandicap,
+      overrideWinner: draft.isHandicap ? draft.overrideWinner : null,
+      editedAt: now.toISOString()
+    };
+    const winner = getMatchWinner(edited);
+    if (!winner) return { error: 'No team has won enough games. Enter the winning scores or use the override.' };
+    edited.winner = winner;
+
+    const updated = matches.map(m => (m.id === old.id ? edited : m));
+    return { players: recomputePlayerStats(players, updated), matches: updated };
+  }
+
+  // Rebuilds the bracket from its original teams and replays every confirmed
+  // result (with `edits` by match id in place of the stored ones). Results are
+  // positional, so replay order doesn't matter. A stored result that can no
+  // longer be replayed, because its match now has different teams, is a
+  // conflict: a played match that depends on the edit. Unconfirmed progress
+  // (scores typed, a table) carries over when the teams are unchanged;
+  // otherwise its label is listed in `cleared`.
+  function replayBracket(bracket, edits) {
+    const oldMatches = listBracketMatches(bracket).map(({ match }) => match);
+    const pending = new Map();
+    oldMatches.forEach(m => {
+      if (m.status === 'DONE' && bothRealTeams(m)) pending.set(m.id, edits[m.id] || m);
+    });
+
+    let replayed = generateBracketStructure(bracket.originalTeams, bracket.type, bracket.maxGames);
+    for (;;) {
+      const next = listBracketMatches(replayed).find(
+        ({ match }) => match.status !== 'DONE' && pending.has(match.id) && sameTeams(match, pending.get(match.id))
+      );
+      if (!next) break;
+      const result = pending.get(next.match.id);
+      pending.delete(next.match.id);
+      Object.assign(next.match, {
+        games: cloneGames(result.games),
+        isHandicap: result.isHandicap,
+        overrideWinner: result.overrideWinner,
+        table: result.table
+      });
+      if (result.editedAt) next.match.editedAt = result.editedAt;
+      replayed = confirmBracketMatch(replayed, next.section, next.rIdx, next.mIdx).bracket;
+      // A finished match keeps the line-ups that played it (substitutions only
+      // change matches still to come).
+      next.match.team1 = result.team1;
+      next.match.team2 = result.team2;
+    }
+
+    const byId = new Map(listBracketMatches(replayed).map(({ match }) => [match.id, match]));
+    const cleared = [];
+    oldMatches.forEach(m => {
+      if (m.status === 'DONE') return;
+      const now = byId.get(m.id);
+      if (now && now.status !== 'DONE' && sameTeams(now, m)) {
+        Object.assign(now, {
+          games: cloneGames(m.games),
+          isHandicap: m.isHandicap,
+          overrideWinner: m.overrideWinner,
+          table: m.table
+        });
+      } else if (hasProgress(m)) {
+        cleared.push(m.label);
+      }
+    });
+
+    return { bracket: replayed, conflicts: [...pending.values()], cleared };
+  }
+
+  const dependentPlayedError = conflict => ({
+    error: `${conflict.label} has already been played, so this match can no longer be edited.`
+  });
+
+  // Whether a bracket match can be edited at all: not when a match fed by its
+  // result has been played (checked by replaying it with the other winner).
+  // Returns { error } or {}.
+  function bracketEditCheck(bracket, matchId) {
+    const draft = editDraftFor({ kind: 'bracket', id: matchId }, [], bracket);
+    if (!draft) return { error: "This match can't be edited." };
+    const old = listBracketMatches(bracket).find(({ match }) => match.id === matchId).match;
+    const flipped = { ...old, isHandicap: true, overrideWinner: old.winner === 1 ? 2 : 1 };
+    const { conflicts } = replayBracket(bracket, { [matchId]: flipped });
+    return conflicts.length > 0 ? dependentPlayedError(conflicts[0]) : {};
+  }
+
+  // Applies an edited bracket result. A changed winner moves the new winner
+  // and loser into the slots the old ones were placed in. Returns { error } or
+  // { bracket, cleared: [labels of matches whose typed scores are dropped], finished }.
+  function editBracketMatch(bracket, draft, now) {
+    const found = listBracketMatches(bracket).find(({ match }) => match.id === draft.id);
+    if (!found || found.match.status !== 'DONE' || !bothRealTeams(found.match)) {
+      return { error: "This match can't be edited." };
+    }
+    const edited = {
+      ...found.match,
+      games: cloneGames(draft.games),
+      isHandicap: draft.isHandicap,
+      overrideWinner: draft.isHandicap ? draft.overrideWinner : null,
+      editedAt: now.toISOString()
+    };
+    if (!getMatchWinner(edited)) {
+      return { error: 'No team has won enough games. Enter the winning scores or use the override.' };
+    }
+    const { bracket: replayed, conflicts, cleared } = replayBracket(bracket, { [draft.id]: edited });
+    if (conflicts.length > 0) return dependentPlayedError(conflicts[0]);
+    const confirm =
+      cleared.length > 0
+        ? `This changes who plays in ${cleared.join(', ')}. The scores typed there will be cleared. Save anyway?`
+        : null;
+    return { bracket: replayed, cleared, confirm, finished: isBracketFinished(replayed) };
+  }
+
+  // Who can be picked for a spot when editing a Monster match: the roster,
+  // plus anyone who played it but has since been removed.
+  function draftPlayerOptions(draft, players) {
+    const onRoster = new Set(players.map(p => p.id));
+    return [...players, ...draft.teamPlayers.filter(p => !onRoster.has(p.id))];
+  }
+
+  const teamWithPlayer = (team, outId, incoming) => {
+    const players = team.players.map(p => (p.id === outId ? { ...incoming } : p));
+    return { ...team, players, name: players.map(p => p.name).join(' & ') };
+  };
+
+  // A player leaves and another takes their place from now on: in a live
+  // Monster match and on their bracket team for every match still to come.
+  // Finished matches keep the player who played them. The leaving player is
+  // paused and the replacement made active.
+  // Returns { error } or { players, matches, bracketData, summary: [lines] }.
+  function substitutePlayer({ players, matches, bracketData }, outId, inId) {
+    const out = players.find(p => p.id === outId);
+    const incoming = players.find(p => p.id === inId);
+    if (!out || !incoming) return { error: 'Pick the player who is leaving and their replacement.' };
+    if (outId === inId) return { error: 'Pick two different players.' };
+
+    const busy = matches.find(m => m.status === 'LIVE' && [...m.team1, ...m.team2].some(p => p.id === inId));
+    if (busy) return { error: `${incoming.name} is playing on table ${busy.table} right now.` };
+
+    const bracketMatches = bracketData ? listBracketMatches(bracketData).map(({ match }) => match) : [];
+    const stillPlaying = team =>
+      bracketMatches.some(m => m.status !== 'DONE' && [m.team1, m.team2].some(t => t && t.id === team.id));
+    const onTeam = (team, id) => (team.players || []).some(p => p.id === id);
+    const teams = bracketData ? bracketData.originalTeams : [];
+    const inTeam = teams.find(t => onTeam(t, inId) && stillPlaying(t));
+    if (inTeam) return { error: `${incoming.name} is still playing in the bracket (${inTeam.name}).` };
+
+    const summary = [];
+    const swap = team => team.map(p => (p.id === outId ? { ...incoming } : p));
+    const updatedMatches = matches.map(m => {
+      if (m.status !== 'LIVE' || ![...m.team1, ...m.team2].some(p => p.id === outId)) return m;
+      summary.push(`${incoming.name} replaces ${out.name} in the match on table ${m.table}.`);
+      return { ...m, team1: swap(m.team1), team2: swap(m.team2) };
+    });
+
+    let updatedBracket = bracketData;
+    const outTeam = teams.find(t => onTeam(t, outId) && stillPlaying(t));
+    if (outTeam) {
+      const replacement = teamWithPlayer(outTeam, outId, incoming);
+      updatedBracket = JSON.parse(JSON.stringify(bracketData));
+      updatedBracket.originalTeams = updatedBracket.originalTeams.map(t => (t.id === outTeam.id ? replacement : t));
+      listBracketMatches(updatedBracket).forEach(({ match }) => {
+        if (match.status === 'DONE') return;
+        ['team1', 'team2'].forEach(key => {
+          if (match[key] && match[key].id === outTeam.id) match[key] = replacement;
+        });
+      });
+      summary.push(`${replacement.name} plays the rest of the bracket (was ${outTeam.name}).`);
+    }
+
+    summary.push(`${out.name} is paused and won't be drawn again.`);
+    const updatedPlayers = players.map(p => {
+      if (p.id === outId) return { ...p, active: false };
+      if (p.id === inId) return { ...p, active: true };
+      return p;
+    });
+    return { players: updatedPlayers, matches: updatedMatches, bracketData: updatedBracket, summary };
+  }
+
+  // ==========================================
   // MATCH HISTORY & CSV EXPORT
   // ==========================================
 
@@ -1919,7 +2206,10 @@ globalThis.TournamentLogic = (() => {
           team1: m.team1 || [],
           team2: m.team2 || [],
           games: m.games || [],
-          isHandicap: m.isHandicap ? 'Yes' : 'No'
+          isHandicap: m.isHandicap ? 'Yes' : 'No',
+          ref: { kind: 'monster', id: m.id },
+          editable: Boolean(m.winner),
+          editedAt: m.editedAt || null
         });
       });
 
@@ -1934,7 +2224,11 @@ globalThis.TournamentLogic = (() => {
             team1: teamPlayers(m.team1),
             team2: teamPlayers(m.team2),
             games: m.games || [],
-            isHandicap: m.isHandicap ? 'Yes' : 'No'
+            isHandicap: m.isHandicap ? 'Yes' : 'No',
+            ref: { kind: 'bracket', id: m.id },
+            // Automatic BYE wins aren't results anyone entered.
+            editable: bothRealTeams(m),
+            editedAt: m.editedAt || null
           });
         }
       });
@@ -2809,6 +3103,19 @@ globalThis.TournamentLogic = (() => {
     bothRealTeams,
     getMatchCardState,
     bracketTeamName,
+    // corrections (admin)
+    authorizeAdminAction,
+    recomputePlayerStats,
+    editDraftFor,
+    setDraftScore,
+    setDraftHandicap,
+    setDraftOverrideWinner,
+    setDraftPlayer,
+    editMonsterMatch,
+    bracketEditCheck,
+    editBracketMatch,
+    draftPlayerOptions,
+    substitutePlayer,
     // history & export
     getCompletedMatchesList,
     formatHistoryRow,
