@@ -123,6 +123,40 @@ describe('computeStandings', () => {
     );
     assert.deepEqual([s[1].totalGames, s[1].winPct, s[1].diff, s[1].avgDiff], [2, '50.0', 4, '2.0']);
     assert.deepEqual([s[3].winPct, s[3].avgDiff, s[3].totalGames], ['0.0', '0.0', 0]);
+    assert.equal('rank' in s[0], false);
+  });
+
+  // Issue #9: players with no matches ranked above players at 0%, and ties
+  // were broken on the rounded 1-decimal values.
+  it('ranks players with no matches last, below 0% players', () => {
+    const roster = [
+      player(1, 'IdleA'),
+      { ...player(2, 'Winless'), wins: 0, losses: 3, gf: 3, ga: 15 },
+      player(3, 'IdleB'),
+      { ...player(4, 'Winner'), wins: 1, losses: 0, gf: 5, ga: 0 }
+    ];
+    assert.deepEqual(
+      L.computeStandings(roster).map(p => p.name),
+      ['Winner', 'Winless', 'IdleA', 'IdleB']
+    );
+  });
+
+  it('breaks ties on the exact values, not the rounded ones', () => {
+    const roster = [
+      // +6 over 13 matches = 0.46, shown as 0.5
+      { ...player(1, 'Smaller'), wins: 7, losses: 6, gf: 60, ga: 54 },
+      // +7 over 13 matches = 0.54, also shown as 0.5
+      { ...player(2, 'Bigger'), wins: 7, losses: 6, gf: 60, ga: 53 },
+      // 66.67% beats 66.6% though both are shown as 66.7%
+      { ...player(3, 'TwoThirds'), wins: 2, losses: 1, gf: 0, ga: 0 },
+      { ...player(4, 'Under'), wins: 333, losses: 167, gf: 0, ga: 0 }
+    ];
+    const s = L.computeStandings(roster);
+    assert.deepEqual(
+      s.map(p => p.name),
+      ['TwoThirds', 'Under', 'Bigger', 'Smaller']
+    );
+    assert.deepEqual([s[2].avgDiff, s[3].avgDiff], ['0.5', '0.5']);
   });
 });
 

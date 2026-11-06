@@ -131,6 +131,16 @@ describe('getMatchWinner', () => {
     assert.equal(L.getMatchWinner({ games: [g(4, 4)] }), null);
     assert.equal(L.getMatchWinner({ games: [g(5, '')] }), null);
   });
+
+  // Issue #8: with an even game count a tied split went to Team 1, and a
+  // match with no games had a winner.
+  it('needs a strict majority, so an even split or no games has no winner', () => {
+    assert.equal(L.getMatchWinner({ games: [g(5, 0), g(0, 5)] }), null);
+    assert.equal(L.getMatchWinner({ games: [g(5, 0), g(0, 5), g(5, 1), g(1, 5)] }), null);
+    assert.equal(L.getMatchWinner({ games: [g(5, 0), g(5, 1), g(0, 5), g('', '')] }), null);
+    assert.equal(L.getMatchWinner({ games: [g(5, 0), g(5, 1), g(5, 2), g(0, 5)] }), 1);
+    assert.equal(L.getMatchWinner({ games: [] }), null);
+  });
 });
 
 describe('completeMonsterMatch', () => {
@@ -165,6 +175,23 @@ describe('completeMonsterMatch', () => {
     assert.deepEqual(L.completeMonsterMatch([a], [undecided], 1), {
       error: 'Cannot complete match: No team has secured enough game wins.'
     });
+  });
+
+  // Issue #7: a game with one score typed added to GF/GA, so the totals
+  // disagreed with Match History and the CSV.
+  it('counts goals only from games with both scores, ties included', () => {
+    const games = [
+      { t1: '5', t2: '1' },
+      { t1: '4', t2: '4' },
+      { t1: 5, t2: 2 },
+      { t1: '7', t2: '' },
+      { t1: '', t2: '3' }
+    ];
+    const won = { ...live, games, isHandicap: true, overrideWinner: 1 };
+    const result = L.completeMonsterMatch([a, b, c, d], [won], 1);
+    const [pa, , pc] = result.players;
+    assert.deepEqual([pa.wins, pa.gf, pa.ga], [1, 14, 7]);
+    assert.deepEqual([pc.losses, pc.gf, pc.ga], [1, 7, 14]);
   });
 
   it('credits wins, losses and goals and marks the match DONE', () => {

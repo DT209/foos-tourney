@@ -82,31 +82,47 @@ describe('confirmBracketMatch', () => {
     assert.equal(L.calculateBracketStandings(bracket)[0].team.name, 'T6');
   });
 
-  it('single elimination, 3 teams: a BYE semi-final loser forfeits 3rd place', () => {
+  // Issue #2: a 3-team bracket used to wait forever on a 3rd place match
+  // against the BYE, and listed the BYE in 3rd place.
+  it('single elimination, 3 teams: no 3rd place match; the real semi-final loser is 3rd', () => {
     const b = L.generateBracketStructure(teams(3), 'single', 1);
-    // Semi 0 was T1 vs BYE (auto-done, never confirmed). Semi 1 is T2 vs T3.
-    let r = L.confirmBracketMatch((scoreFor(b.winnersRounds[0][1], 1), b), 'winners', 0, 1);
-    assert.equal(r.bracket.thirdPlaceMatch.team2.name, 'T3');
-    // Confirming semi 0 manually drops the BYE into 3rd place: T3 wins it.
-    const semi0 = r.bracket.winnersRounds[0][0];
-    semi0.status = 'READY';
-    scoreFor(semi0, 1);
-    r = L.confirmBracketMatch(r.bracket, 'winners', 0, 0);
-    assert.deepEqual([r.bracket.thirdPlaceMatch.status, r.bracket.thirdPlaceMatch.winner], ['DONE', 2]);
+    assert.equal(b.thirdPlaceMatch, null);
+    // Semi 0 is T1 vs BYE (auto-done). Semi 1 is T2 vs T3, then the final.
+    const { bracket, finishedCount } = playOut(b);
+    assert.equal(finishedCount, 1);
+    assert.equal(bracket.isCompleted, true);
+    assert.deepEqual(names(L.calculateBracketStandings(bracket)), [
+      [1, 'T1'],
+      [2, 'T2'],
+      [3, 'T3']
+    ]);
   });
 
-  it('3rd place auto-resolves when team2 or both are BYEs', () => {
-    const make = (t1, t2) => {
-      const b = L.generateBracketStructure(teams(4), 'single', 1);
-      b.thirdPlaceMatch.team1 = t1;
-      scoreFor(b.winnersRounds[0][1], 1);
-      b.winnersRounds[0][1].team2 = t2;
-      return L.confirmBracketMatch(b, 'winners', 0, 1).bracket.thirdPlaceMatch;
-    };
-    const realVsBye = make(teams(1)[0], BYE);
-    assert.deepEqual([realVsBye.status, realVsBye.winner], ['DONE', 1]);
-    const byeVsBye = make(BYE, BYE);
-    assert.deepEqual([byeVsBye.status, byeVsBye.winner], ['DONE', 1]);
+  // Issue #1: a match with a TBD (or BYE) team could be confirmed, which
+  // advanced an empty team.
+  it('refuses a match until both teams are real', () => {
+    const b = L.generateBracketStructure(teams(4), 'single', 1);
+    const gf = b.grandFinals[0];
+    gf.isHandicap = true;
+    gf.overrideWinner = 1;
+    const error = { error: 'Cannot complete match: both teams must be known first.' };
+    assert.deepEqual(L.confirmBracketMatch(b, 'grandFinals', 0, 0), error);
+    assert.equal(gf.status, 'PENDING');
+    gf.team1 = teams(1)[0];
+    gf.team2 = BYE;
+    assert.deepEqual(L.confirmBracketMatch(b, 'grandFinals', 0, 0), error);
+
+    const d = L.generateBracketStructure(teams(8), 'double', 1);
+    scoreFor(d.winnersRounds[1][0], 1);
+    assert.deepEqual(L.confirmBracketMatch(d, 'winners', 1, 0), error);
+    assert.equal(d.winnersRounds[2][0].team1, null);
+  });
+
+  it('3rd place stays pending until both semi-final losers arrive', () => {
+    const b = L.generateBracketStructure(teams(4), 'single', 1);
+    scoreFor(b.winnersRounds[0][1], 1);
+    const tpm = L.confirmBracketMatch(b, 'winners', 0, 1).bracket.thirdPlaceMatch;
+    assert.deepEqual([tpm.team1, tpm.team2.name, tpm.status], [null, 'T3', 'PENDING']);
   });
 
   it('semi-final losers beyond the first two matches are ignored for 3rd place', () => {
@@ -547,7 +563,9 @@ describe('assignBracketTables', () => {
   });
 
   it('treats a non-READY match with two real teams as playable; skips DONE and BYE matches', () => {
-    const b = L.generateBracketStructure(teams(3), 'single', 1);
+    const b = L.generateBracketStructure(teams(4), 'single', 1);
+    b.winnersRounds[0][1].status = 'DONE';
+    b.grandFinals[0].team1 = teams(1)[0];
     b.grandFinals[0].team2 = teams(2)[1];
     b.thirdPlaceMatch.team1 = BYE;
     b.thirdPlaceMatch.team2 = teams(3)[2];
@@ -566,6 +584,64 @@ describe('assignBracketTables', () => {
     const tables = L.assignBracketTables(b, 1);
     assert.deepEqual(tables, [null]);
     assert.equal(b.winnersRounds[0][1].table, 1);
+  });
+});
+
+// Issue #4: lowering Tables Available hid live matches on the removed tables.
+describe('checkTableCountChange / releaseBracketTables', () => {
+  const live = (table, status = 'LIVE') => ({ id: table, table, status });
+
+  it('allows any change that leaves every match on a remaining table', () => {
+    assert.deepEqual(L.checkTableCountChange([live(1), live(3, 'DONE')], null, 2), {});
+    const b = L.generateBracketStructure(teams(4), 'single', 1);
+    L.assignBracketTables(b, 2);
+    assert.deepEqual(L.checkTableCountChange([], b, 2), {});
+    assert.deepEqual(L.checkTableCountChange([], b, 5), {});
+  });
+
+  it('refuses while an open-play match is live on a removed table', () => {
+    assert.deepEqual(L.checkTableCountChange([live(1), live(3), live(4)], null, 2), {
+      error: 'Table 3, 4 has an open-play match in progress. Finish or delete it before removing the table.'
+    });
+  });
+
+  it('asks before moving bracket matches off removed tables, listing each', () => {
+    const b = L.generateBracketStructure(teams(4), 'single', 1);
+    L.assignBracketTables(b, 2);
+    b.thirdPlaceMatch.table = 3;
+    b.thirdPlaceMatch.status = 'DONE';
+    const { confirm } = L.checkTableCountChange([], b, 1);
+    assert.equal(
+      confirm,
+      "A bracket match is drawn on a table you're removing:\n\nTable 2: Match 2 (T2 vs T3)\n\n" +
+        'Reduce to 1 table anyway? The match moves to the next free table and keeps any scores entered.'
+    );
+    const two = L.generateBracketStructure(teams(8), 'single', 1);
+    L.assignBracketTables(two, 4);
+    assert.match(L.checkTableCountChange([], two, 2).confirm, /Table 3: .*\nTable 4: .*\n\nReduce to 2 tables anyway/);
+  });
+
+  it('releases removed tables so matches wait for the next free table, keeping scores', () => {
+    const b = L.generateBracketStructure(teams(8), 'single', 1);
+    L.assignBracketTables(b, 4);
+    const moved = b.winnersRounds[0][3];
+    moved.games[0].t1 = 3;
+    b.winnersRounds[0][0].status = 'DONE';
+    b.winnersRounds[0][0].table = 4;
+    const released = L.releaseBracketTables(b, 2);
+    assert.notEqual(released, b);
+    assert.deepEqual(
+      released.winnersRounds[0].map(m => m.table),
+      [4, 2, null, null]
+    );
+    assert.equal(moved.games[0].t1, 3);
+    b.winnersRounds[0][1].status = 'DONE';
+    const tables = L.assignBracketTables(released, 2);
+    assert.deepEqual(
+      tables.map(t => t.match.id),
+      ['m-winners-1-2', 'm-winners-1-3']
+    );
+    assert.equal(L.releaseBracketTables(null, 2), null);
   });
 });
 

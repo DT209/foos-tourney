@@ -24,7 +24,11 @@ const CHROME_CANDIDATES = [
   '/usr/bin/google-chrome-stable',
   '/usr/bin/chromium-browser',
   '/usr/bin/chromium',
-  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+  '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  // Windows: machine-wide and per-user installs.
+  ...['PROGRAMFILES', 'PROGRAMFILES(X86)', 'LOCALAPPDATA']
+    .filter(name => process.env[name])
+    .map(name => path.join(process.env[name], 'Google', 'Chrome', 'Application', 'chrome.exe'))
 ].filter(Boolean);
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };

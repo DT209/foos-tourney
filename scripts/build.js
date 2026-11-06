@@ -24,7 +24,7 @@ const APP_FILES = {
 const args = new Set(process.argv.slice(2));
 
 function run(cmd, cmdArgs) {
-  const result = spawnSync(cmd, cmdArgs, { cwd: ROOT, stdio: 'inherit' });
+  const result = spawnSync(cmd, cmdArgs, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
   if (result.status !== 0) throw new Error(`${cmd} ${cmdArgs.join(' ')} exited with ${result.status}`);
 }
 
