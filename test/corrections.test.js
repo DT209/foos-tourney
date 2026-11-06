@@ -60,6 +60,8 @@ describe('editing a Monster match', () => {
   };
   const roster = L.recomputePlayerStats([a, b, c, d, e], [done]);
   const ref = { kind: 'monster', id: 7 };
+  const options = L.draftPlayerOptions(L.editDraftFor(ref, [done], null), roster);
+  const setPlayer = (draft, team, slot, value) => L.setDraftPlayer(draft, team, slot, value, options);
 
   it('builds a draft only for a finished match', () => {
     assert.equal(L.editDraftFor({ kind: 'monster', id: 99 }, [done], null), null);
@@ -88,17 +90,24 @@ describe('editing a Monster match', () => {
     );
     assert.equal(L.setDraftHandicap(draft, false).overrideWinner, null);
     assert.equal(L.setDraftOverrideWinner(draft, '2').overrideWinner, 2);
-    assert.deepEqual(L.setDraftPlayer(draft, 'team1Ids', 1, '5').team1Ids, [1, 5]);
-    assert.deepEqual(L.setDraftPlayer(draft, 'team2Ids', 0, '').team2Ids, [null, 4]);
+    assert.deepEqual(setPlayer(draft, 'team1Ids', 1, '5').team1Ids, [1, 5]);
+    assert.deepEqual(setPlayer(draft, 'team2Ids', 0, '').team2Ids, [null, 4]);
+    assert.equal(draft.note, null);
+  });
+
+  it('a player with a text id (from an imported file) can be picked', () => {
+    const draft = L.editDraftFor(ref, [done], null);
+    const textIds = [...options, { id: 'p9', name: 'P9' }];
+    assert.deepEqual(L.setDraftPlayer(draft, 'team1Ids', 1, 'p9', textIds).team1Ids, [1, 'p9']);
   });
 
   it('refuses a missing match, an empty or repeated spot, and a result with no winner', () => {
     const draft = L.editDraftFor(ref, [done], null);
     assert.deepEqual(L.editMonsterMatch(roster, [], draft, NOW), { error: 'That match is no longer in the history.' });
-    assert.deepEqual(L.editMonsterMatch(roster, [done], L.setDraftPlayer(draft, 'team1Ids', 0, ''), NOW), {
+    assert.deepEqual(L.editMonsterMatch(roster, [done], setPlayer(draft, 'team1Ids', 0, ''), NOW), {
       error: 'Pick a player for every spot.'
     });
-    assert.deepEqual(L.editMonsterMatch(roster, [done], L.setDraftPlayer(draft, 'team2Ids', 0, '1'), NOW), {
+    assert.deepEqual(L.editMonsterMatch(roster, [done], setPlayer(draft, 'team2Ids', 0, '1'), NOW), {
       error: 'P1 is on this match twice.'
     });
     assert.deepEqual(L.editMonsterMatch(roster, [done], { ...draft, games: [g(5, 1), g(1, 5), g('', '')] }, NOW), {
@@ -119,7 +128,7 @@ describe('editing a Monster match', () => {
   });
 
   it('a corrected line-up credits the player who really played', () => {
-    const draft = L.setDraftPlayer(L.editDraftFor(ref, [done], null), 'team1Ids', 1, '5');
+    const draft = setPlayer(L.editDraftFor(ref, [done], null), 'team1Ids', 1, '5');
     const result = L.editMonsterMatch(
       roster,
       [done],
@@ -157,7 +166,6 @@ describe('editing a bracket match', () => {
     assert.equal(draftFor(b, 'm-winners-1-1'), null);
     assert.equal(draftFor(b, 'm-winners-1-0'), null);
     const error = { error: "This match can't be edited." };
-    assert.deepEqual(L.bracketEditCheck(b, 'm-winners-1-0'), error);
     assert.deepEqual(L.editBracketMatch(b, { id: 'm-winners-1-0' }, NOW), error);
     assert.deepEqual(L.editBracketMatch(b, { id: 'nope' }, NOW), error);
   });
@@ -169,7 +177,7 @@ describe('editing a bracket match', () => {
     b.winnersRounds[0][1].table = 2;
     const draft = { ...draftFor(b, 'm-winners-1-0'), games: [g(5, 3)] };
     assert.deepEqual([draft.label, draft.team1Name, draft.team2Name], ['Match 1', 'T1', 'T4']);
-    assert.deepEqual(L.bracketEditCheck(b, 'm-winners-1-0'), {});
+    assert.equal(draft.note, null);
     const result = L.editBracketMatch(b, draft, NOW);
     assert.deepEqual([result.cleared, result.confirm], [[], null]);
     assert.equal(result.finished, false);
@@ -195,7 +203,7 @@ describe('editing a bracket match', () => {
     assert.deepEqual(result.cleared, ['Grand Finals', '3rd / 4th Place Match']);
     assert.equal(
       result.confirm,
-      'This changes who plays in Grand Finals, 3rd / 4th Place Match. The scores typed there will be cleared. Save anyway?'
+      'This changes who plays in Grand Finals, 3rd / 4th Place Match. Scores or tables set there will be cleared. Save anyway?'
     );
     const gf = result.bracket.grandFinals[0];
     assert.deepEqual([gf.team1.name, gf.team2.name, gf.games, gf.status], ['T4', 'T2', [g('', '')], 'READY']);
@@ -203,16 +211,57 @@ describe('editing a bracket match', () => {
     assert.deepEqual([tpm.team1.name, tpm.team2.name, tpm.isHandicap], ['T1', 'T3', false]);
   });
 
-  it('refuses when a match fed by the result has been played', () => {
+  it('once a match fed by the result is played, scores can be fixed but the winner cannot change', () => {
     let b = L.generateBracketStructure(teams(4), 'single', 1);
     b = play(b, 'm-winners-1-0', 1);
     b = play(b, 'm-winners-1-1', 1);
     b = play(b, 'm-grandFinal-2-0', 1);
-    const error = { error: 'Grand Finals has already been played, so this match can no longer be edited.' };
-    assert.deepEqual(L.bracketEditCheck(b, 'm-winners-1-0'), error);
-    assert.deepEqual(L.editBracketMatch(b, winBy(draftFor(b, 'm-winners-1-0'), 2), NOW), error);
-    // A played match that the edit doesn't feed still allows it.
-    assert.deepEqual(L.bracketEditCheck(b, 'm-grandFinal-2-0'), {});
+    const draft = draftFor(b, 'm-winners-1-0');
+    assert.equal(
+      draft.note,
+      'A dependent match has been played, so the winner can no longer change. You can still fix scores.'
+    );
+    assert.deepEqual(L.editBracketMatch(b, winBy(draft, 2), NOW), {
+      error:
+        'Grand Finals has already been played, so the winner of this match can no longer change. You can still fix scores.'
+    });
+    const fixed = L.editBracketMatch(b, { ...draft, games: [g(5, 4)] }, NOW);
+    assert.deepEqual(matchById(fixed.bracket, 'm-winners-1-0').games, [g(5, 4)]);
+    assert.equal(matchById(fixed.bracket, 'm-grandFinal-2-0').status, 'DONE');
+    // A played match that the edit doesn't feed leaves the winner open.
+    assert.equal(draftFor(b, 'm-grandFinal-2-0').note, null);
+  });
+
+  it('a saved result with no winner refuses the edit instead of crashing', () => {
+    let b = L.generateBracketStructure(teams(4), 'single', 1);
+    b = play(b, 'm-winners-1-0', 1);
+    b = play(b, 'm-winners-1-1', 1);
+    // As if imported from a hand-edited file: Match 2 is DONE but its score was blanked.
+    b.winnersRounds[0][1].games[0] = g('', '');
+    assert.deepEqual(L.editBracketMatch(b, winBy(draftFor(b, 'm-winners-1-0'), 1), NOW), {
+      error:
+        "Match 2 has a saved result with no winner, so the bracket can't be rebuilt. Edit Match 2 and give it a winner first."
+    });
+    // Giving Match 2 a winner repairs it.
+    const repaired = L.editBracketMatch(b, winBy(draftFor(b, 'm-winners-1-1'), 1), NOW);
+    assert.equal(matchById(repaired.bracket, 'm-winners-1-1').winner, 1);
+  });
+
+  it('a match already called to a table is listed when its teams change', () => {
+    let b = L.generateBracketStructure(teams(4), 'single', 1);
+    b = play(b, 'm-winners-1-0', 1);
+    b = play(b, 'm-winners-1-1', 1);
+    b.grandFinals[0].table = 2;
+    const result = L.editBracketMatch(b, winBy(draftFor(b, 'm-winners-1-0'), 2), NOW);
+    assert.deepEqual(result.cleared, ['Grand Finals']);
+    assert.equal(result.bracket.grandFinals[0].table, null);
+  });
+
+  it('a score fix on a finished bracket that keeps the champion is not a new finish', () => {
+    let b = L.generateBracketStructure(teams(4), 'single', 1);
+    for (const id of ['m-winners-1-0', 'm-winners-1-1', 'm-grandFinal-2-0', 'm-thirdPlace-2-1']) b = play(b, id, 1);
+    const result = L.editBracketMatch(b, { ...draftFor(b, 'm-thirdPlace-2-1'), games: [g(5, 4)] }, NOW);
+    assert.equal(result.finished, false);
   });
 
   it('refuses a result with no winner', () => {
@@ -252,7 +301,7 @@ describe('editing a bracket match', () => {
     // A played reset blocks editing Grand Final 1.
     const reset = play(added.bracket, 'm-grandFinal-2-0', 1);
     assert.match(
-      L.bracketEditCheck(reset, 'm-grandFinal-1-0').error,
+      L.editBracketMatch(reset, winBy(draftFor(reset, 'm-grandFinal-1-0'), 1), NOW).error,
       /Bracket Reset \(Match 2\) has already been played/
     );
   });
@@ -276,6 +325,41 @@ describe('editing a bracket match', () => {
   });
 });
 
+describe('editMatch', () => {
+  const [a, b, c, d] = players(4);
+  const done = { id: 7, status: 'DONE', winner: 1, team1: [a, b], team2: [c, d], games: [g(5, 1)] };
+  const roster = L.recomputePlayerStats([a, b, c, d], [done]);
+
+  it('saves a Monster edit and leaves the bracket alone', () => {
+    const state = { players: roster, matches: [done], bracketData: null };
+    const draft = { ...L.editDraftFor({ kind: 'monster', id: 7 }, [done], null), games: [g(1, 5)] };
+    const result = L.editMatch(state, draft, NOW);
+    assert.deepEqual(
+      [result.matches[0].winner, result.bracketData, result.confirm, result.finished],
+      [2, null, null, false]
+    );
+    assert.equal(result.players[0].losses, 1);
+    assert.deepEqual(L.editMatch({ ...state, matches: [] }, draft, NOW), {
+      error: 'That match is no longer in the history.'
+    });
+  });
+
+  it('saves a bracket edit and leaves players and matches alone', () => {
+    let bracket = L.generateBracketStructure(teams(4), 'single', 1);
+    bracket = play(bracket, 'm-winners-1-0', 1);
+    bracket = play(bracket, 'm-winners-1-1', 1);
+    bracket.grandFinals[0].games[0] = g('5', '');
+    const state = { players: roster, matches: [done], bracketData: bracket };
+    const result = L.editMatch(state, winBy(draftFor(bracket, 'm-winners-1-0'), 2), NOW);
+    assert.deepEqual([result.players, result.matches, result.finished], [roster, [done], false]);
+    assert.equal(result.bracketData.grandFinals[0].team1.name, 'T4');
+    assert.match(result.confirm, /Grand Finals/);
+    assert.deepEqual(L.editMatch(state, { kind: 'bracket', id: 'nope' }, NOW), {
+      error: "This match can't be edited."
+    });
+  });
+});
+
 describe('substitutePlayer', () => {
   const roster = players(6);
   const [a, b, c, d, e, f] = roster;
@@ -288,6 +372,12 @@ describe('substitutePlayer', () => {
     assert.deepEqual(L.substitutePlayer(state(), 99, 1), pick);
     assert.deepEqual(L.substitutePlayer(state(), 1, 1), { error: 'Pick two different players.' });
     assert.deepEqual(L.substitutePlayer(state(), 5, 3), { error: 'P3 is playing on table 2 right now.' });
+  });
+
+  it('accepts ids as the text a dropdown gives, including text ids', () => {
+    assert.equal(L.substitutePlayer(state(), '2', '5').matches[0].team1[1].name, 'P5');
+    const withText = [...roster, { ...f, id: 'p9', name: 'P9' }];
+    assert.equal(L.substitutePlayer(state({ players: withText }), '2', 'p9').matches[0].team1[1].name, 'P9');
   });
 
   it('takes the leaving player’s place in a live match, pausing them', () => {

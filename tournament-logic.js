@@ -148,6 +148,9 @@ globalThis.TournamentLogic = (() => {
   // Shape checks for nested data, so a hand-edited or corrupt save/import
   // can't crash rendering. They check what the UI relies on, not every field.
   const isId = v => (typeof v === 'number' && isFinite(v)) || (typeof v === 'string' && v.length > 0);
+  // Ids may be numbers (made by the app) or text (allowed by isId in an
+  // imported file); a <select> hands back text, so compare as text.
+  const findById = (list, value) => list.find(p => String(p.id) === String(value));
   const isCount = v => typeof v === 'number' && isFinite(v) && v >= 0;
   const isNamed = v => isPlainObject(v) && typeof v.name === 'string';
   const isScore = v => typeof v === 'string' || (typeof v === 'number' && isFinite(v));
@@ -1206,19 +1209,22 @@ globalThis.TournamentLogic = (() => {
   }
 
   // `slot` is 'p1' or 'p2'; `playerId` comes from a <select> value, so it's a
-  // string ('' clears the slot because no candidate has id 0).
+  // string ('' clears the slot). Ids are compared as text, since an imported
+  // file may use text ids.
   function setManualTeamPlayer(customTeams, teamIndex, slot, candidates, playerId) {
-    const player = candidates.find(p => p.id === Number(playerId));
+    const player = findById(candidates, playerId);
     return customTeams.map((team, idx) => (idx === teamIndex ? { ...team, [slot]: player } : team));
   }
 
-  // Manual pairings must give every team at least one player (a one-player
-  // team is allowed) and use each player once. Returns a message, or null.
+  // Manual 2v2 pairings must give every team exactly two players and use each
+  // player once. Teams are never uneven: standings and the ranking systems
+  // built on them assume every team in a format has the same number of
+  // players. Returns a message, or null.
   function manualTeamsError(customTeams) {
     const seen = new Set();
     for (let i = 0; i < customTeams.length; i++) {
       const members = [customTeams[i].p1, customTeams[i].p2].filter(Boolean);
-      if (members.length === 0) return `Team ${i + 1} has no players. Pick at least one player for every team.`;
+      if (members.length < 2) return `Team ${i + 1} needs two players. Pick two players for every team.`;
       for (const p of members) {
         if (seen.has(p.id)) return `${p.name} is picked more than once. Each player can only be on one team.`;
         seen.add(p.id);
@@ -1928,17 +1934,28 @@ globalThis.TournamentLogic = (() => {
     Boolean(a.team1 && b.team1 && a.team2 && b.team2) && a.team1.id === b.team1.id && a.team2.id === b.team2.id;
   const hasProgress = m => m.isHandicap || m.games.some(g => g.t1 !== '' || g.t2 !== '');
 
+  const WINNER_LOCKED_NOTE =
+    'A dependent match has been played, so the winner can no longer change. You can still fix scores.';
+
+  // Whether a bracket match's winner is locked: replaying it with the other
+  // winner would disturb a match fed by its result that has been played.
+  function bracketWinnerLocked(bracket, match) {
+    const flipped = { ...match, isHandicap: true, overrideWinner: match.winner === 1 ? 2 : 1 };
+    return replayBracket(bracket, { [match.id]: flipped }).conflicts.length > 0;
+  }
+
   // The editor's starting point for a Match History row's `ref`, or null when
   // the match can't be edited (gone, not finished, or a BYE).
   // { kind, id, label, team1Ids, team2Ids (Monster) | team1Name, team2Name (bracket),
-  //   games, isHandicap, overrideWinner }
+  //   games, isHandicap, overrideWinner, note: text to show in the editor or null }
   function editDraftFor(ref, matches, bracketData) {
     const base = m => ({
       kind: ref.kind,
       id: m.id,
       games: cloneGames(m.games),
       isHandicap: Boolean(m.isHandicap),
-      overrideWinner: m.isHandicap ? m.overrideWinner || 1 : null
+      overrideWinner: m.isHandicap ? m.overrideWinner || 1 : null,
+      note: null
     });
     if (ref.kind === 'monster') {
       const m = matches.find(x => x.id === ref.id && x.status === 'DONE');
@@ -1957,7 +1974,8 @@ globalThis.TournamentLogic = (() => {
       ...base(found.match),
       label: found.match.label,
       team1Name: found.match.team1.name,
-      team2Name: found.match.team2.name
+      team2Name: found.match.team2.name,
+      note: bracketWinnerLocked(bracketData, found.match) ? WINNER_LOCKED_NOTE : null
     };
   }
 
@@ -1975,10 +1993,12 @@ globalThis.TournamentLogic = (() => {
     return { ...draft, overrideWinner: Number(winner) };
   }
 
-  // `team` is 'team1Ids' or 'team2Ids'; `playerId` comes from a <select>.
-  function setDraftPlayer(draft, team, slot, playerId) {
+  // `team` is 'team1Ids' or 'team2Ids'; `playerId` comes from a <select>
+  // ('' clears the spot) and is matched against `options`, the editor's list.
+  function setDraftPlayer(draft, team, slot, playerId, options) {
     const ids = [...draft[team]];
-    ids[slot] = playerId === '' ? null : Number(playerId);
+    const player = findById(options, playerId);
+    ids[slot] = player ? player.id : null;
     return { ...draft, [team]: ids };
   }
 
@@ -2022,7 +2042,8 @@ globalThis.TournamentLogic = (() => {
   // longer be replayed, because its match now has different teams, is a
   // conflict: a played match that depends on the edit. Unconfirmed progress
   // (scores typed, a table) carries over when the teams are unchanged;
-  // otherwise its label is listed in `cleared`.
+  // otherwise its label is listed in `cleared`. `broken` is a stored result
+  // that has no winner, which stops the replay.
   function replayBracket(bracket, edits) {
     const oldMatches = listBracketMatches(bracket).map(({ match }) => match);
     const pending = new Map();
@@ -2031,6 +2052,7 @@ globalThis.TournamentLogic = (() => {
     });
 
     let replayed = generateBracketStructure(bracket.originalTeams, bracket.type, bracket.maxGames);
+    let broken = null;
     for (;;) {
       const next = listBracketMatches(replayed).find(
         ({ match }) => match.status !== 'DONE' && pending.has(match.id) && sameTeams(match, pending.get(match.id))
@@ -2045,7 +2067,14 @@ globalThis.TournamentLogic = (() => {
         table: result.table
       });
       if (result.editedAt) next.match.editedAt = result.editedAt;
-      replayed = confirmBracketMatch(replayed, next.section, next.rIdx, next.mIdx).bracket;
+      const step = confirmBracketMatch(replayed, next.section, next.rIdx, next.mIdx);
+      if (step.error) {
+        // A saved result with no winner (e.g. from a hand-edited file) can't
+        // be replayed, so the bracket can't be rebuilt around it.
+        broken = result;
+        break;
+      }
+      replayed = step.bracket;
       // A finished match keeps the line-ups that played it (substitutions only
       // change matches still to come).
       next.match.team1 = result.team1;
@@ -2064,33 +2093,23 @@ globalThis.TournamentLogic = (() => {
           overrideWinner: m.overrideWinner,
           table: m.table
         });
-      } else if (hasProgress(m)) {
+      } else if (hasProgress(m) || m.table) {
+        // A match already called to a table counts: its players have walked over.
         cleared.push(m.label);
       }
     });
 
-    return { bracket: replayed, conflicts: [...pending.values()], cleared };
+    return { bracket: replayed, conflicts: [...pending.values()], cleared, broken };
   }
 
-  const dependentPlayedError = conflict => ({
-    error: `${conflict.label} has already been played, so this match can no longer be edited.`
-  });
+  const bracketChampionId = bracket => calculateBracketStandings(bracket)[0].team.id;
 
-  // Whether a bracket match can be edited at all: not when a match fed by its
-  // result has been played (checked by replaying it with the other winner).
-  // Returns { error } or {}.
-  function bracketEditCheck(bracket, matchId) {
-    const draft = editDraftFor({ kind: 'bracket', id: matchId }, [], bracket);
-    if (!draft) return { error: "This match can't be edited." };
-    const old = listBracketMatches(bracket).find(({ match }) => match.id === matchId).match;
-    const flipped = { ...old, isHandicap: true, overrideWinner: old.winner === 1 ? 2 : 1 };
-    const { conflicts } = replayBracket(bracket, { [matchId]: flipped });
-    return conflicts.length > 0 ? dependentPlayedError(conflicts[0]) : {};
-  }
-
-  // Applies an edited bracket result. A changed winner moves the new winner
-  // and loser into the slots the old ones were placed in. Returns { error } or
-  // { bracket, cleared: [labels of matches whose typed scores are dropped], finished }.
+  // Applies an edited bracket result. Fixing scores is always allowed; a
+  // changed winner moves the new winner and loser into the slots the old ones
+  // were placed in, and is refused once a match fed by the result has been
+  // played. Returns { error } or { bracket, cleared: [labels of matches whose
+  // scores or tables are dropped], confirm, finished: true when this edit
+  // decided the champion }.
   function editBracketMatch(bracket, draft, now) {
     const found = listBracketMatches(bracket).find(({ match }) => match.id === draft.id);
     if (!found || found.match.status !== 'DONE' || !bothRealTeams(found.match)) {
@@ -2106,13 +2125,41 @@ globalThis.TournamentLogic = (() => {
     if (!getMatchWinner(edited)) {
       return { error: 'No team has won enough games. Enter the winning scores or use the override.' };
     }
-    const { bracket: replayed, conflicts, cleared } = replayBracket(bracket, { [draft.id]: edited });
-    if (conflicts.length > 0) return dependentPlayedError(conflicts[0]);
+    const { bracket: replayed, conflicts, cleared, broken } = replayBracket(bracket, { [draft.id]: edited });
+    if (broken) {
+      return {
+        error: `${broken.label} has a saved result with no winner, so the bracket can't be rebuilt. Edit ${broken.label} and give it a winner first.`
+      };
+    }
+    if (conflicts.length > 0) {
+      return {
+        error: `${conflicts[0].label} has already been played, so the winner of this match can no longer change. You can still fix scores.`
+      };
+    }
     const confirm =
       cleared.length > 0
-        ? `This changes who plays in ${cleared.join(', ')}. The scores typed there will be cleared. Save anyway?`
+        ? `This changes who plays in ${cleared.join(', ')}. Scores or tables set there will be cleared. Save anyway?`
         : null;
-    return { bracket: replayed, cleared, confirm, finished: isBracketFinished(replayed) };
+    // Only celebrate when this edit decided the champion: the bracket just
+    // finished, or an edit to the final changed who won it.
+    const finished =
+      isBracketFinished(replayed) &&
+      (!bracket.isCompleted || bracketChampionId(bracket) !== bracketChampionId(replayed));
+    return { bracket: replayed, cleared, confirm, finished };
+  }
+
+  // One entry point for saving the editor, Monster or bracket. Returns
+  // { error } or the full { players, matches, bracketData, confirm, finished }
+  // for the page to apply (after asking `confirm`, when set).
+  function editMatch({ players, matches, bracketData }, draft, now) {
+    if (draft.kind === 'monster') {
+      const result = editMonsterMatch(players, matches, draft, now);
+      if (result.error) return result;
+      return { players: result.players, matches: result.matches, bracketData, confirm: null, finished: false };
+    }
+    const result = editBracketMatch(bracketData, draft, now);
+    if (result.error) return result;
+    return { players, matches, bracketData: result.bracket, confirm: result.confirm, finished: result.finished };
   }
 
   // Who can be picked for a spot when editing a Monster match: the roster,
@@ -2131,12 +2178,15 @@ globalThis.TournamentLogic = (() => {
   // Monster match and on their bracket team for every match still to come.
   // Finished matches keep the player who played them. The leaving player is
   // paused and the replacement made active.
+  // `outValue` and `inValue` are player ids, or their text from a <select>.
   // Returns { error } or { players, matches, bracketData, summary: [lines] }.
-  function substitutePlayer({ players, matches, bracketData }, outId, inId) {
-    const out = players.find(p => p.id === outId);
-    const incoming = players.find(p => p.id === inId);
+  function substitutePlayer({ players, matches, bracketData }, outValue, inValue) {
+    const out = findById(players, outValue);
+    const incoming = findById(players, inValue);
     if (!out || !incoming) return { error: 'Pick the player who is leaving and their replacement.' };
-    if (outId === inId) return { error: 'Pick two different players.' };
+    if (out === incoming) return { error: 'Pick two different players.' };
+    const outId = out.id;
+    const inId = incoming.id;
 
     const busy = matches.find(m => m.status === 'LIVE' && [...m.team1, ...m.team2].some(p => p.id === inId));
     if (busy) return { error: `${incoming.name} is playing on table ${busy.table} right now.` };
@@ -3112,8 +3162,8 @@ globalThis.TournamentLogic = (() => {
     setDraftOverrideWinner,
     setDraftPlayer,
     editMonsterMatch,
-    bracketEditCheck,
     editBracketMatch,
+    editMatch,
     draftPlayerOptions,
     substitutePlayer,
     // history & export

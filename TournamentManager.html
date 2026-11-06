@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=0d0c6d0dfd"></script>
+  <script src="tournament-logic.js?v=ec9364a775"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -176,7 +176,7 @@
       buildManualTeams, getManualTeamCandidates, setManualTeamPlayer, parseTeamCountInput,
       createBracket, clearMatchResults, nextTournamentState, checkTableCountChange, releaseBracketTables, bothRealTeams,
       authorizeAdminAction, editDraftFor, setDraftScore, setDraftHandicap, setDraftOverrideWinner, setDraftPlayer,
-      editMonsterMatch, bracketEditCheck, editBracketMatch, draftPlayerOptions, substitutePlayer,
+      editMatch, draftPlayerOptions, substitutePlayer,
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
       calculateBracketStandings, placeLabel, placeMedal, assignBracketTables, getMatchCardState, bracketTeamName,
       getCompletedMatchesList, formatHistoryRow, tournamentCsv,
@@ -347,7 +347,11 @@
                 </select>
               )}
             </div>
-            {draft.kind === 'bracket' && (
+            {draft.note ? (
+              <p data-testid="edit-note" className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/40 rounded p-2">
+                {draft.note}
+              </p>
+            ) : draft.kind === 'bracket' && (
               <p className="text-[11px] text-gray-500">
                 If the winner changes, the new winner and loser take the old ones' places in the matches still to come.
               </p>
@@ -1274,38 +1278,20 @@
         action();
       };
 
-      const openMatchEditor = (ref) => {
-        if (ref.kind === 'bracket') {
-          const check = bracketEditCheck(bracketData, ref.id);
-          if (check.error) {
-            alert(check.error);
-            return;
-          }
-        }
-        setEditDraft(editDraftFor(ref, matches, bracketData));
-      };
+      const openMatchEditor = (ref) => setEditDraft(editDraftFor(ref, matches, bracketData));
 
       const startEditMatch = (ref) => requireAdmin('Edit a Finished Match', () => openMatchEditor(ref));
 
       const saveMatchEdit = () => {
-        if (editDraft.kind === 'monster') {
-          const result = editMonsterMatch(players, matches, editDraft, new Date());
-          if (result.error) {
-            alert(result.error);
-            return;
-          }
-          setPlayers(result.players);
-          setMatches(result.matches);
-          setEditDraft(null);
-          return;
-        }
-        const result = editBracketMatch(bracketData, editDraft, new Date());
+        const result = editMatch({ players, matches, bracketData }, editDraft, new Date());
         if (result.error) {
           alert(result.error);
           return;
         }
         if (result.confirm && !confirm(result.confirm)) return;
-        setBracketData(result.bracket);
+        setPlayers(result.players);
+        setMatches(result.matches);
+        setBracketData(result.bracketData);
         setEditDraft(null);
         if (result.finished) setShowWinnerModal(true);
       };
@@ -1313,7 +1299,7 @@
       const startSubstitution = () => requireAdmin('Substitute a Player', () => setSubDraft({ outId: '', inId: '' }));
 
       const saveSubstitution = () => {
-        const result = substitutePlayer({ players, matches, bracketData }, Number(subDraft.outId), Number(subDraft.inId));
+        const result = substitutePlayer({ players, matches, bracketData }, subDraft.outId, subDraft.inId);
         if (result.error) {
           alert(result.error);
           return;
@@ -1448,11 +1434,7 @@
       // tournament started here is published at once (the one a first visit
       // creates on its own stays local).
       const startNewTournament = () => {
-        const current = {
-          tournamentName, tableCount, format, maxGames, bracketTeamCount, bracketElimType, bracketMaxGames,
-          teamFormationStrategy, seedingStrategy, adminPin
-        };
-        const fresh = nextTournamentState(current, createTournamentId(), new Date());
+        const fresh = nextTournamentState(currentTournamentState(), createTournamentId(), new Date());
         applyTournament(fresh);
         if (remote) beginPublishing(fresh);
       };
@@ -2023,7 +2005,7 @@
                 draft={editDraft}
                 playerOptions={editDraft.kind === 'monster' ? draftPlayerOptions(editDraft, players) : []}
                 onScore={(gIdx, key, value) => setEditDraft(setDraftScore(editDraft, gIdx, key, value))}
-                onPlayer={(team, slot, id) => setEditDraft(setDraftPlayer(editDraft, team, slot, id))}
+                onPlayer={(team, slot, id) => setEditDraft(setDraftPlayer(editDraft, team, slot, id, draftPlayerOptions(editDraft, players)))}
                 onHandicap={(checked) => setEditDraft(setDraftHandicap(editDraft, checked))}
                 onOverride={(winner) => setEditDraft(setDraftOverrideWinner(editDraft, winner))}
                 onSave={saveMatchEdit}

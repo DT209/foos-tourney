@@ -443,16 +443,34 @@ describe('createBracket', () => {
   });
 
   // Issue #3: manual pairings weren't checked for repeated players or empty teams.
-  it('manual pairings: rejects empty teams and repeated players, allows one-player teams', () => {
-    const [p1, p2, p3, p4] = opts.rankedPlayers;
+  // 2v2 teams always have two players: standings and the ranking systems built
+  // on them assume teams in a format are the same size.
+  it('manual pairings: rejects short teams and repeated players', () => {
+    const [p1, p2, p3, p4, p5, p6, p7, p8] = opts.rankedPlayers;
     const manual = customTeams => L.createBracket({ ...opts, teamFormationStrategy: 'manual', customTeams });
+    const shortTeam = { error: 'Team 2 needs two players. Pick two players for every team.' };
     assert.deepEqual(
       manual([
         { p1, p2 },
         { p1: null, p2: undefined },
         { p1: p3, p2: p4 }
       ]),
-      { error: 'Team 2 has no players. Pick at least one player for every team.' }
+      shortTeam
+    );
+    assert.deepEqual(
+      manual([
+        { p1, p2 },
+        { p1: p3, p2: null },
+        { p1: p5, p2: p6 }
+      ]),
+      shortTeam
+    );
+    assert.deepEqual(
+      manual([
+        { p1, p2 },
+        { p1: null, p2: p4 }
+      ]),
+      shortTeam
     );
     assert.deepEqual(manual([{ p1, p2: p1 }]), {
       error: 'P1 is picked more than once. Each player can only be on one team.'
@@ -465,14 +483,21 @@ describe('createBracket', () => {
       { error: 'P2 is picked more than once. Each player can only be on one team.' }
     );
     const ok = manual([
-      { p1, p2 },
-      { p1: p3, p2: null },
-      { p1: null, p2: p4 }
+      { p1, p2: p8 },
+      { p1: p3, p2: p4 },
+      { p1: p5, p2: p6 },
+      { p1: p7, p2 }
     ]);
     assert.ok(ok.bracket);
     assert.deepEqual(
-      ok.bracket.originalTeams.map(t => t.name),
-      ['P1 & P2', 'P3', 'P4']
+      ok.bracket.originalTeams.map(t => t.players.length),
+      [2, 2, 2, 2]
+    );
+    // 7 players can't fill 4 manual teams of two.
+    assert.match(
+      L.createBracket({ ...opts, rankedPlayers: opts.rankedPlayers.slice(0, 7), teamFormationStrategy: 'manual' })
+        .error,
+      /Need at least 8 players for 4 teams in 2v2 format/
     );
     // 1v1 never forms teams, so manual pairings aren't consulted.
     assert.ok(L.createBracket({ ...opts, format: '1v1', teamFormationStrategy: 'manual', customTeams: [{}] }).bracket);

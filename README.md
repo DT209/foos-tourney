@@ -92,7 +92,8 @@ flowchart TD
 - Lowering **Tables Available** mid-bracket asks first when a bracket match is on a removed table. If you go
   ahead, that match moves to the next free table and keeps any scores entered. An open-play match on a removed
   table must be finished or deleted first.
-- Manual pairings must give every team at least one player and use each player once.
+- Manual pairings must give every team two players and use each player once. Teams are never uneven: a 2v2
+  team always has two players and a 1v1 team one.
 
 ## Correcting results and substitutions
 
@@ -104,8 +105,9 @@ one). They work while the admin lock is on, but not on a finished tournament or 
   rebuilt from all finished matches, so a corrected line-up credits the right people. Edited matches show
   "✎ edited".
 - **Bracket edits:** if the winner changes, the new winner and loser take the old ones' places in the matches
-  still to come (next round, Losers Bracket, 3rd place, a Grand Final reset). If a match fed by the result has
-  already been played, the edit is refused. Scores typed into an affected match that isn't confirmed yet are
+  still to come (next round, Losers Bracket, 3rd place, a Grand Final reset). Scores can always be fixed, but
+  once a match fed by the result has been played the winner can't change: the editor says so, and saving a
+  different winner is refused. Scores or a table already set on an affected match that isn't confirmed yet are
   cleared, after a confirm.
 - **Substitute Player** (Tournaments section, or 🔄 Substitute on the bracket): the replacement takes the leaving
   player's place in their live match and on their bracket team for every match still to come, and the team is

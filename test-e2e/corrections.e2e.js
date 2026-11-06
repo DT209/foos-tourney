@@ -200,14 +200,26 @@ describe('editing a bracket match', () => {
     gf = (await savedState()).bracketData.grandFinals[0];
     assert.deepEqual([gf.team1.name, gf.games[0].t1], [semi.team2.name, '']);
 
-    // Once the final is played, the semi can't be edited any more.
+    // Once the final is played, the semi's winner is locked but its score can be fixed.
     await app.playCard(await app.playableCard('bracket-grand-finals'), 1);
-    const before = app.dialogs.length;
     await editSemi();
     await enterAdminPin('2468');
-    assert.equal(app.dialogs.length, before + 1);
-    assert.match(app.dialogs.at(-1), /Grand Finals has already been played, so this match can no longer be edited/);
+    assert.match(
+      await app.page.$eval('[data-testid="edit-note"]', el => el.textContent),
+      /A dependent match has been played, so the winner can no longer change/
+    );
+    await fillEditorScores([5, 1]);
+    await clickTestId('save-match-edit');
+    assert.match(
+      app.dialogs.at(-1),
+      /Grand Finals has already been played, so the winner of this match can no longer change/
+    );
+    assert.equal(await exists(EDITOR), true);
+    await fillEditorScores([3, 5]);
+    await clickTestId('save-match-edit');
     assert.equal(await exists(EDITOR), false);
+    const saved = (await savedState()).bracketData;
+    assert.deepEqual([saved.winnersRounds[0][0].games[0], saved.grandFinals[0].status], [{ t1: 3, t2: 5 }, 'DONE']);
   });
 
   it('editing the final of a complete bracket shows the standings again', async () => {
