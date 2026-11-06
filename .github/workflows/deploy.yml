@@ -1,0 +1,117 @@
+# Manual production deploy: Actions → Deploy to production → Run workflow.
+# Builds the chosen tag or commit with every quality gate, uploads it to /public_html/dyp,
+# then tags the commit prod-<UTC date and time> (ISO 8601 basic format, e.g. prod-20261106T153045Z).
+name: Deploy to production
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: >-
+          Tag or commit id (short or full) to deploy. It must be on main.
+          Leave blank to deploy the tag or branch chosen in "Use workflow from" above.
+        required: false
+        type: string
+
+permissions: {}
+
+# One production deploy at a time.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  # Running the workflow already needs write access. This narrows it to the role in the repository
+  # variable DEPLOY_MIN_ROLE (admin, maintain or write; admin when unset). Set it to write to let
+  # every collaborator with write access deploy.
+  authorize:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check the deployer's role
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIN_ROLE: ${{ vars.DEPLOY_MIN_ROLE || 'admin' }}
+        run: |
+          rank() { case "$1" in admin) echo 3 ;; maintain) echo 2 ;; write) echo 1 ;; *) echo 0 ;; esac; }
+          [ "$(rank "$MIN_ROLE")" -gt 0 ] || { echo "::error::DEPLOY_MIN_ROLE must be admin, maintain or write, not '$MIN_ROLE'"; exit 1; }
+          role=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_TRIGGERING_ACTOR/permission" --jq .role_name)
+          if [ "$(rank "$role")" -lt "$(rank "$MIN_ROLE")" ]; then
+            echo "::error::$GITHUB_TRIGGERING_ACTOR has the '$role' role; production deploys need '$MIN_ROLE' or higher"
+            exit 1
+          fi
+          echo "$GITHUB_TRIGGERING_ACTOR ($role) may deploy (minimum: $MIN_ROLE)"
+
+  build:
+    needs: authorize
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # every branch and tag, so short ids resolve and main's history can be checked
+          persist-credentials: false
+
+      # The input arrives through env, never pasted into the script, so it can't inject shell.
+      - name: Resolve ref
+        id: resolve
+        env:
+          REQUESTED: ${{ inputs.ref }}
+        run: |
+          ref=${REQUESTED:-$GITHUB_SHA}
+          case "$ref" in -*|*..*) echo "::error::'$ref' is not a tag or commit id"; exit 1 ;; esac
+          sha=$(git rev-parse --verify --quiet "${ref}^{commit}") || { echo "::error::'$ref' is not a tag or commit in this repository (or a short id matches more than one commit)"; exit 1; }
+          git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
+          git checkout --quiet --detach "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $ref = $(git log -1 --format='%h %s (%cs)')"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-production
+          path: dist/
+
+  upload:
+    needs: build
+    uses: ./.github/workflows/ftp-upload.yml
+    with:
+      environment: production
+      target-dir: /public_html/dyp
+      url: https://calgaryfoosballclub.com/dyp/
+      artifact: dist-production
+      commit: ${{ needs.build.outputs.sha }}
+
+  tag:
+    needs: [build, upload]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Tag the deployed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.build.outputs.sha }}
+          REQUESTED: ${{ inputs.ref }}
+        run: |
+          now=$(date -u +%Y%m%dT%H%M%SZ)
+          tag="prod-$now"
+          message="Production deploy of ${SHA:0:7} at $now (requested: ${REQUESTED:-$GITHUB_REF_NAME}) by $GITHUB_ACTOR
+          $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$tag" -f message="$message" \
+            -f object="$SHA" -f type=commit --jq .sha)
+          gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$object" > /dev/null
+          echo "### Tagged \`$tag\`" >> "$GITHUB_STEP_SUMMARY"

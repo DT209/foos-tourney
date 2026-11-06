@@ -146,6 +146,35 @@ loads its scripts with version stamps (`?v=…`): a new upload changes their URL
 new copies. The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
 
+### Deploying
+
+GitHub Actions uploads `dist/` to the club host (`web5.oracast.com`) over FTPS. Uploads never delete
+files on the host, put `index.html` up after the scripts, and then fetch each file back to check it.
+
+| Where                                                                              | When                                                        | Workflow                 |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------ |
+| Test: `/public_html/dyp/tst` ([dyp/tst](https://calgaryfoosballclub.com/dyp/tst/)) | Automatically, after every merge to `main` passes the build | `ci.yml` (`deploy-test`) |
+| Live: `/public_html/dyp` ([dyp](https://calgaryfoosballclub.com/dyp/))             | By hand, for a tag or commit you choose                     | `deploy.yml`             |
+
+To put a version live:
+
+1. Open **Actions → Deploy to production → Run workflow**.
+2. Pick what to deploy. Either:
+   - choose a tag in **Use workflow from** (the dropdown lists every branch and tag, including earlier
+     `prod-…` tags, which makes a rollback one click) and leave **ref** blank, or
+   - leave **Use workflow from** on `main` and type a tag or commit id (short or full) in **ref**. Each test
+     deploy's run summary shows its commit id.
+3. **Run workflow.** It checks that you may deploy and that the commit is on `main`, runs the full build
+   at that commit, uploads it, and tags the commit `prod-<UTC date and time>`, e.g. `prod-20261106T153045Z`.
+
+Only admins can deploy to live. The repository variable `DEPLOY_MIN_ROLE` (**Settings → Secrets and
+variables → Actions → Variables**) sets the lowest role allowed: `admin` (the default when unset),
+`maintain` or `write`. Set it to `write` to let every collaborator deploy.
+
+The FTP login is stored as `FTP_USER` and `FTP_PASSWORD` secrets in the `test` and `production`
+environments (**Settings → Environments**). The host's self-signed certificate is pinned by fingerprint in
+`.github/workflows/ftp-upload.yml`. That file says how to check a replacement.
+
 To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
 
 ```sh

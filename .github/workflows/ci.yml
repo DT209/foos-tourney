@@ -27,3 +27,15 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # Every push to main that passes the build goes to the test folder.
+  deploy-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    uses: ./.github/workflows/ftp-upload.yml
+    with:
+      environment: test
+      target-dir: /public_html/dyp/tst
+      url: https://calgaryfoosballclub.com/dyp/tst/
+      artifact: dist
+      commit: ${{ github.sha }}
