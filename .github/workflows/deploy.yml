@@ -9,7 +9,7 @@ on:
       ref:
         description: >-
           Tag or commit id (short or full) to deploy. It must be on main.
-          Leave blank to deploy the tag or branch chosen in "Use workflow from" above.
+          Leave blank to deploy the latest main. Keep "Use workflow from" on main.
         required: false
         type: string
 
@@ -34,6 +34,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MIN_ROLE: ${{ vars.DEPLOY_MIN_ROLE || 'admin' }}
         run: |
+          # The production environment only accepts runs from main, so fail here, not after the build.
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Run this from main and put the tag or commit in 'ref'"; exit 1; }
           rank() { case "$1" in admin) echo 3 ;; maintain) echo 2 ;; write) echo 1 ;; *) echo 0 ;; esac; }
           [ "$(rank "$MIN_ROLE")" -gt 0 ] || { echo "::error::DEPLOY_MIN_ROLE must be admin, maintain or write, not '$MIN_ROLE'"; exit 1; }
           role=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_TRIGGERING_ACTOR/permission" --jq .role_name)

@@ -159,21 +159,24 @@ files on the host, put `index.html` up after the scripts, and then fetch each fi
 To put a version live:
 
 1. Open **Actions → Deploy to production → Run workflow**.
-2. Pick what to deploy. Either:
-   - choose a tag in **Use workflow from** (the dropdown lists every branch and tag, including earlier
-     `prod-…` tags, which makes a rollback one click) and leave **ref** blank, or
-   - leave **Use workflow from** on `main` and type a tag or commit id (short or full) in **ref**. Each test
-     deploy's run summary shows its commit id.
+2. Leave **Use workflow from** on `main`. In **ref**, type a tag or commit id (short or full), or leave it
+   blank for the latest `main`. Each test deploy's run summary shows its commit id. To roll back, use an
+   earlier `prod-…` tag from the repository's [tags](https://github.com/DT209/foos-tourney/tags).
 3. **Run workflow.** It checks that you may deploy and that the commit is on `main`, runs the full build
    at that commit, uploads it, and tags the commit `prod-<UTC date and time>`, e.g. `prod-20261106T153045Z`.
 
-Only admins can deploy to live. The repository variable `DEPLOY_MIN_ROLE` (**Settings → Secrets and
-variables → Actions → Variables**) sets the lowest role allowed: `admin` (the default when unset),
-`maintain` or `write`. Set it to `write` to let every collaborator deploy.
+Who can deploy rests on two settings:
 
-The FTP login is stored as `FTP_USER` and `FTP_PASSWORD` secrets in the `test` and `production`
-environments (**Settings → Environments**). The host's self-signed certificate is pinned by fingerprint in
-`.github/workflows/ftp-upload.yml`. That file says how to check a replacement.
+- The `test` and `production` environments (**Settings → Environments**) hold the FTP login as `FTP_USER`
+  and `FTP_PASSWORD`, and accept runs only from `main`. The `main` ruleset requires a pull request, so
+  nobody can run a changed workflow with the login without a reviewed merge. Keep both in place.
+- The `authorize` job in `deploy.yml` allows only the role in the repository variable `DEPLOY_MIN_ROLE`
+  (**Settings → Secrets and variables → Actions → Variables**): `admin` (the default when unset),
+  `maintain` or `write`. Set it to `write` to let every collaborator deploy. For a stricter gate, add
+  required reviewers to the `production` environment.
+
+The host's self-signed certificate is pinned by fingerprint in `.github/workflows/ftp-upload.yml`. That
+file says how to check a replacement.
 
 To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
 
