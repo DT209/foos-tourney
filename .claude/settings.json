@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.claude/skills/deploy/scripts/deploy-status.sh)",
+      "Bash(git fetch:*)",
+      "Bash(git log:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git tag -l:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run watch:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh variable list:*)",
+      "Bash(gh workflow view:*)"
+    ],
+    "ask": [
+      "Bash(gh workflow run:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh variable set:*)",
+      "Bash(gh secret set:*)",
+      "Bash(lftp:*)"
+    ]
+  }
+}

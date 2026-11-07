@@ -1,0 +1,105 @@
+# Reusable: uploads a built dist/ artifact from the calling run to the club host over FTPS.
+# Called by ci.yml (test folder, on every push to main) and deploy.yml (live folder, by hand).
+name: FTP upload
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub environment that holds FTP_USER and FTP_PASSWORD.
+        required: true
+        type: string
+      target-dir:
+        description: Absolute folder on the host, e.g. /public_html/dyp.
+        required: true
+        type: string
+      url:
+        description: Public address of target-dir, used to check the upload.
+        required: true
+        type: string
+      artifact:
+        description: Name of the dist/ artifact uploaded earlier in the same run.
+        required: true
+        type: string
+      commit:
+        description: The commit being deployed, for the run summary.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.url }}
+    # Never two uploads into one folder at once. A newer queued deploy replaces an older queued one.
+    concurrency:
+      group: ftp-${{ inputs.target-dir }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ inputs.artifact }}
+          path: dist
+
+      - name: Install lftp
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lftp
+
+      # The host's FTPS certificate is self-signed by Oracast (valid 2024-04-03 to 2034-04-01), so it
+      # is trusted by its SHA-1 fingerprint rather than by turning verification off: the session stays
+      # encrypted and any other certificate is refused. ssl-force stops a fallback to plain FTP.
+      # To check a replacement certificate:
+      #   echo | openssl s_client -starttls ftp -connect web5.oracast.com:21 2>/dev/null | openssl x509 -noout -subject -issuer -fingerprint -sha1
+      #
+      # No --delete: the live folder also holds tst/ and older files that must stay.
+      # The page goes up last. The host caches .js for 31 days by URL, so a new index.html that
+      # arrived first could make browsers fetch the old script under the new ?v= stamp and keep it.
+      - name: Upload
+        env:
+          FTP_USER: ${{ secrets.FTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          TARGET_DIR: ${{ inputs.target-dir }}
+        run: |
+          test -n "$FTP_USER" && test -n "$LFTP_PASSWORD" || { echo "::error::FTP_USER or FTP_PASSWORD is not set for this environment"; exit 1; }
+          test -f dist/index.html || { echo "::error::artifact has no index.html"; exit 1; }
+          lftp -u "$FTP_USER" --env-password web5.oracast.com <<EOF
+          set cmd:fail-exit yes
+          set ftp:ssl-force yes
+          set ftp:ssl-protect-data yes
+          set ssl:verify-certificate/FF:C3:43:3F:24:7E:0D:EF:F1:A5:75:C8:16:A8:EC:18:E5:E9:31:A6 no
+          set net:timeout 30
+          set net:max-retries 3
+          mirror --reverse --verbose --exclude-glob index.html dist "$TARGET_DIR"
+          put dist/index.html -o "$TARGET_DIR/index.html"
+          bye
+          EOF
+
+      # Fetch every file back over HTTPS (a unique query skips caches) and compare bytes.
+      - name: Verify
+        env:
+          BASE_URL: ${{ inputs.url }}
+        run: |
+          status=0
+          for f in dist/*; do
+            name=${f#dist/}
+            want=$(sha256sum < "$f")
+            got=$(curl -fsSL "${BASE_URL}${name}?deploy=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" | sha256sum)
+            if [ "$want" = "$got" ]; then echo "ok       $name"; else echo "::error::$name does not match the upload"; status=1; fi
+          done
+          exit $status
+
+      - name: Summary
+        env:
+          COMMIT: ${{ inputs.commit }}
+          BASE_URL: ${{ inputs.url }}
+          ENV_NAME: ${{ inputs.environment }}
+        run: |
+          {
+            echo "### Deployed \`${COMMIT:0:7}\` to ${ENV_NAME}"
+            echo
+            echo "$BASE_URL"
+            echo
+            echo "To put this commit live: **Actions → Deploy to production → Run workflow**, ref \`${COMMIT:0:7}\`."
+          } >> "$GITHUB_STEP_SUMMARY"
