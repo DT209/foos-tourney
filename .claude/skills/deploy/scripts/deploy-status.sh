@@ -40,14 +40,15 @@ gh run list --workflow ci.yml --branch main --event push -L 3 \
 
 echo
 echo "== Latest production deploys (deploy.yml)"
-# gh 2.45's run list has no actor field, so ask the REST API (which also gives who started each run).
+# Only git and gh run list (both read-only) run here, so allowing this script without a prompt grants
+# nothing more than those commands. gh 2.45 can't show who started a run; the run page does.
 # A 404 means deploy.yml isn't on main yet. Any other error is real, so show it.
-if runs=$(gh api "repos/{owner}/{repo}/actions/workflows/deploy.yml/runs?per_page=3" \
-  --jq '.workflow_runs[] | "\(.status)/\(.conclusion // "-") \(.created_at) by \(.triggering_actor.login) \(.html_url)"' 2>&1); then
+if runs=$(gh run list --workflow deploy.yml -L 3 --json conclusion,status,createdAt,url \
+  --jq '.[] | "\(.status)/\(if .conclusion == "" then "-" else .conclusion end) \(.createdAt) \(.url)"' 2>&1); then
   echo "${runs:-(no production deploys yet)}"
 else
   case "$runs" in
-    *"Not Found"*) echo "(deploy.yml is not on main yet)" ;;
+    *"404"*) echo "(deploy.yml is not on main yet)" ;;
     *) echo "$runs" >&2; exit 1 ;;
   esac
 fi
