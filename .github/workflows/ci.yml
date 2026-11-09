@@ -49,3 +49,5 @@ jobs:
       artifact: dist
       commit: ${{ github.sha }}
       only-main-head: true
+    # A reusable workflow sees only the secrets its caller passes, environment secrets included.
+    secrets: inherit
