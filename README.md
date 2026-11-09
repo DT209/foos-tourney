@@ -146,6 +146,43 @@ loads its scripts with version stamps (`?v=…`): a new upload changes their URL
 new copies. The live leaderboard fetch only works same-origin with calgaryfoosballclub.com; elsewhere the page
 falls back to a bundled snapshot.
 
+### Deploying
+
+GitHub Actions uploads `dist/` to the club host (`web5.oracast.com`) over FTPS. Uploads never delete
+files on the host, put `index.html` up after the scripts, and then fetch each file back to check it.
+
+| Where                                                                              | When                                                        | Workflow                 |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------ |
+| Test: `/public_html/dyp/tst` ([dyp/tst](https://calgaryfoosballclub.com/dyp/tst/)) | Automatically, after every merge to `main` passes the build | `ci.yml` (`deploy-test`) |
+| Live: `/public_html/dyp` ([dyp](https://calgaryfoosballclub.com/dyp/))             | By hand, for a tag or commit you choose                     | `deploy.yml`             |
+
+To put a version live:
+
+1. Open **Actions → Deploy to production → Run workflow**.
+2. Leave **Use workflow from** on `main`. In **ref**, type a tag or commit id (short or full), or leave it
+   blank for the latest `main`. Each test deploy's run summary shows its commit id. To roll back, use an
+   earlier `prod-…` tag from the repository's [tags](https://github.com/DT209/foos-tourney/tags).
+3. **Run workflow.** It checks that you may deploy and that the commit is on `main`, runs the full build
+   at that commit, uploads it, and tags the commit `prod-<UTC date and time>`, e.g. `prod-20261106T153045Z`.
+
+For a rollback that fails only at `npm audit` (an advisory published since that version was built), tick
+**skip-audit**. The tag message records it. Re-running a deploy run uploads its build again, and the role
+check runs again with it. Re-running an older CI run doesn't overwrite test unless its commit is still the
+tip of `main`.
+
+Who can deploy rests on two settings:
+
+- The `test` and `production` environments (**Settings → Environments**) hold the FTP login as `FTP_USER`
+  and `FTP_PASSWORD`, and accept runs only from `main`. The `main` ruleset requires a pull request, so
+  nobody can run a changed workflow with the login without a reviewed merge. Keep both in place.
+- `deploy.yml` allows only the role in the repository variable `DEPLOY_MIN_ROLE`
+  (**Settings → Secrets and variables → Actions → Variables**): `admin` (the default when unset),
+  `maintain` or `write`. Set it to `write` to let every collaborator deploy. For a stricter gate, add
+  required reviewers to the `production` environment.
+
+The host's self-signed certificate is pinned by fingerprint in `.github/workflows/ftp-upload.yml`. That
+file says how to check a replacement.
+
 To try it on phones and TVs on the same Wi-Fi, serve `dist/` from a laptop:
 
 ```sh

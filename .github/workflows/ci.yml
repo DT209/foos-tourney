@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+# Pushes to main run one at a time, so builds finish (and deploy to test) in push order. A newer
+# push waiting in line replaces an older one that hasn't started. Pull requests are not limited.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('ci-{0}', github.ref) || format('ci-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 jobs:
   build:
     # Pinned so the image (and its Chrome) only changes when we choose to.
@@ -27,3 +36,16 @@ jobs:
         with:
           name: dist
           path: dist/
+
+  # Every push to main that passes the build goes to the test folder.
+  deploy-test:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    uses: ./.github/workflows/ftp-upload.yml
+    with:
+      environment: test
+      target-dir: /public_html/dyp/tst
+      url: https://calgaryfoosballclub.com/dyp/tst/
+      artifact: dist
+      commit: ${{ github.sha }}
+      only-main-head: true
