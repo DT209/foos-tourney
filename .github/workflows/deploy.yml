@@ -114,6 +114,8 @@ jobs:
       artifact: dist-production
       commit: ${{ needs.build.outputs.sha }}
       min-role: ${{ vars.DEPLOY_MIN_ROLE || 'admin' }}
+    # A reusable workflow sees only the secrets its caller passes, environment secrets included.
+    secrets: inherit
 
   tag:
     needs: [build, upload]
