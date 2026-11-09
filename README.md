@@ -165,12 +165,17 @@ To put a version live:
 3. **Run workflow.** It checks that you may deploy and that the commit is on `main`, runs the full build
    at that commit, uploads it, and tags the commit `prod-<UTC date and time>`, e.g. `prod-20261106T153045Z`.
 
+For a rollback that fails only at `npm audit` (an advisory published since that version was built), tick
+**skip-audit**. The tag message records it. Re-running a deploy run uploads its build again, and the role
+check runs again with it. Re-running an older CI run doesn't overwrite test unless its commit is still the
+tip of `main`.
+
 Who can deploy rests on two settings:
 
 - The `test` and `production` environments (**Settings → Environments**) hold the FTP login as `FTP_USER`
   and `FTP_PASSWORD`, and accept runs only from `main`. The `main` ruleset requires a pull request, so
   nobody can run a changed workflow with the login without a reviewed merge. Keep both in place.
-- The `authorize` job in `deploy.yml` allows only the role in the repository variable `DEPLOY_MIN_ROLE`
+- `deploy.yml` allows only the role in the repository variable `DEPLOY_MIN_ROLE`
   (**Settings → Secrets and variables → Actions → Variables**): `admin` (the default when unset),
   `maintain` or `write`. Set it to `write` to let every collaborator deploy. For a stricter gate, add
   required reviewers to the `production` environment.

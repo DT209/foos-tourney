@@ -5,7 +5,7 @@ set -eu
 
 git fetch --quiet --tags origin
 
-prod_tag=$(git tag -l 'prod-*' --sort=-creatordate | head -n 1)
+prod_tag=$(git tag -l 'prod-*' --sort=-refname | head -n 1)
 main_sha=$(git rev-parse --short origin/main)
 
 echo "== Live (/dyp)"
@@ -28,7 +28,7 @@ fi
 
 echo
 echo "== Recent prod tags (rollback targets)"
-git tag -l 'prod-*' --sort=-creatordate | head -n 5 | while read -r t; do
+git tag -l 'prod-*' --sort=-refname | head -n 5 | while read -r t; do
   echo "$t -> $(git log -1 --format='%h %s' "$t")"
 done
 
@@ -36,14 +36,21 @@ echo
 echo "== Latest test deploys (ci.yml on main)"
 gh run list --workflow ci.yml --branch main --event push -L 3 \
   --json headSha,conclusion,status,createdAt,url \
-  --jq '.[] | "\(.headSha[0:7]) \(.status)/\(.conclusion // "-") \(.createdAt) \(.url)"'
+  --jq '.[] | "\(.headSha[0:7]) \(.status)/\(if .conclusion == "" then "-" else .conclusion end) \(.createdAt) \(.url)"'
 
 echo
 echo "== Latest production deploys (deploy.yml)"
-gh run list --workflow deploy.yml -L 3 \
-  --json headSha,conclusion,status,createdAt,url,actor \
-  --jq '.[] | "\(.status)/\(.conclusion // "-") \(.createdAt) by \(.actor.login) \(.url)"' 2>/dev/null \
-  || echo "(deploy.yml is not on main yet)"
+# gh 2.45's run list has no actor field, so ask the REST API (which also gives who started each run).
+# A 404 means deploy.yml isn't on main yet. Any other error is real, so show it.
+if runs=$(gh api "repos/{owner}/{repo}/actions/workflows/deploy.yml/runs?per_page=3" \
+  --jq '.workflow_runs[] | "\(.status)/\(.conclusion // "-") \(.created_at) by \(.triggering_actor.login) \(.html_url)"' 2>&1); then
+  echo "${runs:-(no production deploys yet)}"
+else
+  case "$runs" in
+    *"Not Found"*) echo "(deploy.yml is not on main yet)" ;;
+    *) echo "$runs" >&2; exit 1 ;;
+  esac
+fi
 
 echo
 echo "(origin/main is $main_sha)"

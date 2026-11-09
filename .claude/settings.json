@@ -2,6 +2,7 @@
   "permissions": {
     "allow": [
       "Bash(.claude/skills/deploy/scripts/deploy-status.sh)",
+      "Bash(./.claude/skills/deploy/scripts/deploy-status.sh)",
       "Bash(git fetch:*)",
       "Bash(git log:*)",
       "Bash(git rev-parse:*)",
@@ -20,7 +21,12 @@
       "Bash(gh pr merge:*)",
       "Bash(gh variable set:*)",
       "Bash(gh secret set:*)",
-      "Bash(lftp:*)"
+      "Bash(lftp:*)",
+      "Bash(gh run rerun:*)",
+      "Bash(gh api:*)",
+      "Bash(./lftp.sh:*)",
+      "Bash(sh lftp.sh:*)",
+      "Bash(bash lftp.sh:*)"
     ]
   }
 }

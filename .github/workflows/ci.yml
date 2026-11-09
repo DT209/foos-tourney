@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Pushes to main run one at a time, so builds finish (and deploy to test) in push order. A newer
+# push waiting in line replaces an older one that hasn't started. Pull requests are not limited.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('ci-{0}', github.ref) || format('ci-{0}', github.run_id) }}
+  cancel-in-progress: false
+
 jobs:
   build:
     # Pinned so the image (and its Chrome) only changes when we choose to.
@@ -42,3 +48,4 @@ jobs:
       url: https://calgaryfoosballclub.com/dyp/tst/
       artifact: dist
       commit: ${{ github.sha }}
+      only-main-head: true

@@ -98,7 +98,15 @@ Pull requests show `deploy-test` as skipped. That is expected.
 
 A rollback is a production deploy of an earlier `prod-…` tag: pick it from `git tag -l 'prod-*'`
 (the status script lists recent ones) and follow the steps above. It creates a new `prod-` tag on that old
-commit, which keeps the history honest. The old commit's own build runs, so it must still pass.
+commit, which keeps the history honest. The old commit's own build runs, so it must still pass. If only
+`npm audit` fails (a security advisory published since that version was built), tell the user and, with
+their yes, dispatch again with `-f skip-audit=true`. The tag message records that the audit was skipped.
+
+### Re-runs are deploys
+
+Re-running a deploy run (`gh run rerun`, or "Re-run jobs" in the UI) uploads that run's build again, so it
+needs the same confirmation as a new deploy. Re-running a CI run on `main` re-deploys to test only if its
+commit is still `main`'s tip; otherwise the upload is skipped with a notice.
 
 ## Waiting on a run
 
@@ -113,22 +121,22 @@ gh run watch <run-id> --exit-status --interval 60 > /dev/null; gh run view <run-
 
 Read the failure before guessing: `gh run view <run-id> --log-failed | tail -60`. Common causes:
 
-| Failing job / step       | Meaning and what to do                                                                                                                                                                                                  |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `authorize`, not main    | Dispatched from a branch or tag. Re-run with `--ref main` and the target in `-f ref=`.                                                                                                                                  |
-| `authorize`, role        | The person's role is below `DEPLOY_MIN_ROLE`. Only an admin can change that (see below).                                                                                                                                |
-| `build`, Resolve ref     | Unknown, ambiguous or off-`main` ref. Use a longer id or a commit on `main`.                                                                                                                                            |
-| `build`, `npm run build` | That commit doesn't pass its own quality gates. Fix forward on `main`, or pick another ref.                                                                                                                             |
-| `upload`, Upload         | FTPS login or certificate. A certificate error means the host's certificate changed: follow the check in the comment in `ftp-upload.yml` and ask the user before changing the fingerprint. Never turn verification off. |
-| `upload`, Verify         | A file read back over HTTPS doesn't match. Re-run once (a cache can lag). If it still fails, report the file names.                                                                                                     |
-| `tag`                    | Deployed but untagged. Tell the user. The site is live with that commit.                                                                                                                                                |
+| Failing job / step            | Meaning and what to do                                                                                                                                                                                                  |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `authorize`, not main         | Dispatched from a branch or tag. Re-run with `--ref main` and the target in `-f ref=`.                                                                                                                                  |
+| `authorize` or `upload`, role | The person's role is below `DEPLOY_MIN_ROLE`. Only an admin can change that (see below). The upload job checks again so a re-run can't skip it.                                                                         |
+| `build`, Resolve ref          | Unknown, ambiguous or off-`main` ref. Use a longer id or a commit on `main`.                                                                                                                                            |
+| `build`, `npm run build`      | That commit doesn't pass its own quality gates. Fix forward on `main`, or pick another ref. For a rollback blocked only by `npm audit`, see Rollback.                                                                   |
+| `upload`, Upload              | FTPS login or certificate. A certificate error means the host's certificate changed: follow the check in the comment in `ftp-upload.yml` and ask the user before changing the fingerprint. Never turn verification off. |
+| `upload`, Verify              | "could not fetch" means the site didn't answer; "does not match" means it served other bytes. Re-run once with the user's yes (a cache can lag). If it still fails, report the file names.                              |
+| `tag`                         | Deployed but untagged. Tell the user. The site is live with that commit.                                                                                                                                                |
 
 A run that fails before `upload` changed nothing on the host. Say so: it is the first thing people want
 to know.
 
 ## Who can deploy
 
-The `authorize` job allows the role in the repository variable `DEPLOY_MIN_ROLE`: `admin` (default when
+The `authorize` job, and again the upload job, allow the role in the repository variable `DEPLOY_MIN_ROLE`: `admin` (default when
 unset), `maintain` or `write`. Check it with `gh variable list`. Changing it
 (`gh variable set DEPLOY_MIN_ROLE --body write`) is an admin decision: do it only when the user asks.
 The real fence is that the `test` and `production` environments accept runs only from `main`, which

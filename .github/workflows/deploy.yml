@@ -12,6 +12,13 @@ on:
           Leave blank to deploy the latest main. Keep "Use workflow from" on main.
         required: false
         type: string
+      skip-audit:
+        description: >-
+          Skip npm audit in the build. Use only for a rollback that a security advisory published
+          since that version was built would otherwise block.
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -23,7 +30,8 @@ concurrency:
 jobs:
   # Running the workflow already needs write access. This narrows it to the role in the repository
   # variable DEPLOY_MIN_ROLE (admin, maintain or write; admin when unset). Set it to write to let
-  # every collaborator with write access deploy.
+  # every collaborator with write access deploy. This job fails fast, before the build. The upload
+  # job checks the role again, because re-running a single job skips the jobs before it.
   authorize:
     runs-on: ubuntu-24.04
     permissions:
@@ -64,7 +72,7 @@ jobs:
         env:
           REQUESTED: ${{ inputs.ref }}
         run: |
-          ref=${REQUESTED:-$GITHUB_SHA}
+          ref=$(printf '%s' "${REQUESTED:-$GITHUB_SHA}" | tr -d '[:space:]')
           case "$ref" in -*|*..*) echo "::error::'$ref' is not a tag or commit id"; exit 1 ;; esac
           sha=$(git rev-parse --verify --quiet "${ref}^{commit}") || { echo "::error::'$ref' is not a tag or commit in this repository (or a short id matches more than one commit)"; exit 1; }
           git merge-base --is-ancestor "$sha" origin/main || { echo "::error::$sha is not on main"; exit 1; }
@@ -81,7 +89,16 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
-      - run: npm run build
+      - name: npm run build
+        env:
+          SKIP_AUDIT: ${{ inputs.skip-audit }}
+        run: |
+          if [ "$SKIP_AUDIT" = true ]; then
+            echo "::warning::npm audit skipped for this deploy"
+            npm run build -- --skip-audit
+          else
+            npm run build
+          fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-production
@@ -96,6 +113,7 @@ jobs:
       url: https://calgaryfoosballclub.com/dyp/
       artifact: dist-production
       commit: ${{ needs.build.outputs.sha }}
+      min-role: ${{ vars.DEPLOY_MIN_ROLE || 'admin' }}
 
   tag:
     needs: [build, upload]
@@ -108,12 +126,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ needs.build.outputs.sha }}
           REQUESTED: ${{ inputs.ref }}
+          SKIP_AUDIT: ${{ inputs.skip-audit }}
         run: |
-          now=$(date -u +%Y%m%dT%H%M%SZ)
+          # The name and the tagger date are the same moment, so tags sort by deploy time either way.
+          epoch=$(date -u +%s)
+          now=$(date -u -d "@$epoch" +%Y%m%dT%H%M%SZ)
           tag="prod-$now"
-          message="Production deploy of ${SHA:0:7} at $now (requested: ${REQUESTED:-$GITHUB_REF_NAME}) by $GITHUB_ACTOR
+          note=""
+          [ "$SKIP_AUDIT" = true ] && note=", npm audit skipped"
+          message="Production deploy of ${SHA:0:7} at $now (requested: ${REQUESTED:-latest main}$note) by $GITHUB_TRIGGERING_ACTOR
           $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           object=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="$tag" -f message="$message" \
-            -f object="$SHA" -f type=commit --jq .sha)
+            -f object="$SHA" -f type=commit \
+            -f "tagger[name]=github-actions[bot]" \
+            -f "tagger[email]=41898282+github-actions[bot]@users.noreply.github.com" \
+            -f "tagger[date]=$(date -u -d "@$epoch" +%Y-%m-%dT%H:%M:%SZ)" --jq .sha)
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$tag" -f sha="$object" > /dev/null
           echo "### Tagged \`$tag\`" >> "$GITHUB_STEP_SUMMARY"

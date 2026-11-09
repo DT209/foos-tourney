@@ -25,6 +25,18 @@ on:
         description: The commit being deployed, for the run summary.
         required: true
         type: string
+      min-role:
+        description: >-
+          Lowest repository role (admin, maintain, write) the person who triggered the run needs.
+          Checked here, beside the secrets, so re-running only this job can't skip it. Empty: no check.
+        required: false
+        type: string
+        default: ''
+      only-main-head:
+        description: Skip the upload unless the commit is still the tip of main (stops older runs overwriting newer).
+        required: false
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -39,12 +51,46 @@ jobs:
       group: ftp-${{ inputs.target-dir }}
       cancel-in-progress: false
     steps:
+      # GITHUB_TRIGGERING_ACTOR is whoever started this attempt, including a re-run.
+      - name: Check the deployer's role
+        if: inputs.min-role != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MIN_ROLE: ${{ inputs.min-role }}
+        run: |
+          rank() { case "$1" in admin) echo 3 ;; maintain) echo 2 ;; write) echo 1 ;; *) echo 0 ;; esac; }
+          [ "$(rank "$MIN_ROLE")" -gt 0 ] || { echo "::error::minimum role must be admin, maintain or write, not '$MIN_ROLE'"; exit 1; }
+          role=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$GITHUB_TRIGGERING_ACTOR/permission" --jq .role_name)
+          if [ "$(rank "$role")" -lt "$(rank "$MIN_ROLE")" ]; then
+            echo "::error::$GITHUB_TRIGGERING_ACTOR has the '$role' role; this deploy needs '$MIN_ROLE' or higher"
+            exit 1
+          fi
+          echo "$GITHUB_TRIGGERING_ACTOR ($role) may deploy (minimum: $MIN_ROLE)"
+
+      - name: Check the commit is still main's tip
+        id: head
+        env:
+          COMMIT: ${{ inputs.commit }}
+          ONLY_MAIN_HEAD: ${{ inputs.only-main-head }}
+        run: |
+          if [ "$ONLY_MAIN_HEAD" != true ]; then echo "skip=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          head=$(git ls-remote "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" refs/heads/main | cut -f1)
+          [ -n "$head" ] || { echo "::error::could not read main's tip"; exit 1; }
+          if [ "$head" = "$COMMIT" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipped: ${COMMIT:0:7} is no longer main's tip (${head:0:7}); that commit's run deploys instead."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: steps.head.outputs.skip == 'false'
         with:
           name: ${{ inputs.artifact }}
           path: dist
 
       - name: Install lftp
+        if: steps.head.outputs.skip == 'false'
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends lftp
 
       # The host's FTPS certificate is self-signed by Oracast (valid 2024-04-03 to 2034-04-01), so it
@@ -56,7 +102,10 @@ jobs:
       # No --delete: the live folder also holds tst/ and older files that must stay.
       # The page goes up last. The host caches .js for 31 days by URL, so a new index.html that
       # arrived first could make browsers fetch the old script under the new ?v= stamp and keep it.
+      # use-temp-file uploads each file under a temporary name and renames it, so nobody is served a
+      # half-written file.
       - name: Upload
+        if: steps.head.outputs.skip == 'false'
         env:
           FTP_USER: ${{ secrets.FTP_USER }}
           LFTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
@@ -71,6 +120,7 @@ jobs:
           set ssl:verify-certificate/FF:C3:43:3F:24:7E:0D:EF:F1:A5:75:C8:16:A8:EC:18:E5:E9:31:A6 no
           set net:timeout 30
           set net:max-retries 3
+          set xfer:use-temp-file yes
           mirror --reverse --verbose --exclude-glob index.html dist "$TARGET_DIR"
           put dist/index.html -o "$TARGET_DIR/index.html"
           bye
@@ -78,19 +128,26 @@ jobs:
 
       # Fetch every file back over HTTPS (a unique query skips caches) and compare bytes.
       - name: Verify
+        if: steps.head.outputs.skip == 'false'
         env:
           BASE_URL: ${{ inputs.url }}
         run: |
           status=0
+          fetched=$(mktemp)
           for f in dist/*; do
             name=${f#dist/}
-            want=$(sha256sum < "$f")
-            got=$(curl -fsSL "${BASE_URL}${name}?deploy=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" | sha256sum)
-            if [ "$want" = "$got" ]; then echo "ok       $name"; else echo "::error::$name does not match the upload"; status=1; fi
+            if ! curl -fsSL --retry 3 -o "$fetched" "${BASE_URL}${name}?deploy=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"; then
+              echo "::error::could not fetch $name from ${BASE_URL}"; status=1
+            elif cmp -s "$f" "$fetched"; then
+              echo "ok       $name"
+            else
+              echo "::error::$name on the site does not match the upload"; status=1
+            fi
           done
           exit $status
 
       - name: Summary
+        if: steps.head.outputs.skip == 'false'
         env:
           COMMIT: ${{ inputs.commit }}
           BASE_URL: ${{ inputs.url }}
@@ -100,6 +157,8 @@ jobs:
             echo "### Deployed \`${COMMIT:0:7}\` to ${ENV_NAME}"
             echo
             echo "$BASE_URL"
-            echo
-            echo "To put this commit live: **Actions → Deploy to production → Run workflow**, ref \`${COMMIT:0:7}\`."
+            if [ "$ENV_NAME" = test ]; then
+              echo
+              echo "To put this commit live: **Actions → Deploy to production → Run workflow**, ref \`${COMMIT:0:7}\`."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
