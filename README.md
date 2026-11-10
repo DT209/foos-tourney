@@ -203,7 +203,8 @@ through `npx` at a pinned version, so it isn't a dependency.
 ```sh
 npm install
 npm test            # unit tests
-npm run test:e2e    # UI tests in headless Chrome (needs Chrome + network for the CDN scripts)
+npm run test:e2e    # UI tests in headless Chrome (needs Chrome + network for the CDN scripts),
+                    # several files at once (E2E_CONCURRENCY=n to change; pass files to run only those)
 npm run coverage:ui # after test:e2e: which UI functions never ran
 npm run coverage    # unit tests + 100% coverage gate (HTML report in coverage/)
 npm run check:browsers # cross-browser check: JS APIs, secure-page-only APIs, CSS

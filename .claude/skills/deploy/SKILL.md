@@ -68,7 +68,7 @@ Pull requests show `deploy-test` as skipped. That is expected.
 ## Production deploy
 
 1. **Pick the ref.** The user gives a tag or commit id (short or full). With no ref, the default is the
-   latest `main`; say so. Resolve and check it locally so mistakes surface before a 20-minute build:
+   latest `main`; say so. Resolve and check it locally so mistakes surface before the build runs:
    ```sh
    git fetch --quiet --tags origin
    sha=$(git rev-parse --verify --quiet "<ref>^{commit}")       # fails on unknown or ambiguous ids
@@ -110,8 +110,9 @@ commit is still `main`'s tip; otherwise the upload is skipped with a notice.
 
 ## Waiting on a run
 
-The build takes about 20 minutes, longer than one foreground command may run. Start the watch in the
-background so you are notified when it ends, and don't poll in between:
+CI takes about 2-3 minutes (the UI tests run as parallel shards). The production deploy runs the whole build
+in one job, so it takes longer. Start the watch in the background so you are notified when it ends, and
+don't poll in between:
 
 ```sh
 gh run watch <run-id> --exit-status --interval 60 > /dev/null; gh run view <run-id> --json conclusion,jobs --jq '{conclusion, jobs: [.jobs[] | {name, conclusion}]}'

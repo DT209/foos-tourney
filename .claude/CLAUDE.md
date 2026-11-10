@@ -55,6 +55,21 @@ enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep 
 - UI tests live in `test-e2e/` (puppeteer-core + `node:test`). `harness.js` serves the repo, drives
   the page, freezes the clock with `setClock()` (e.g. to cross midnight), and captures CSV downloads.
   Add a UI test for any user-visible change. Prefer `data-testid` hooks over styling classes.
+- UI test files run in parallel (`scripts/run-e2e.js`, up to 8 at once, `E2E_CONCURRENCY` overrides), each
+  in its own process with its own Chrome, so files must not depend on each other. The slowest file sets the
+  wall time: keep each under about 20 seconds and split a longer one by `describe`, moving its shared
+  selectors and helpers into a `<name>-helpers.js` module (see `publishing-helpers.js`).
+- Page loads wait for `load`, then 100ms of network quiet (`settle` in the harness), not `networkidle0`.
+  Wait for what a test needs (`waitForSelector`, a polling `waitFor`) instead of adding fixed pauses. A test
+  that has to wait out a real timer (the 5-second publish throttle) goes in its own file, so those waits
+  overlap.
+- Only the first page load in each test file compiles the JSX with the real CDN Babel. The harness keeps
+  that output and serves later loads a page that runs it directly (`precompiledPage`), so coverage text is
+  identical. Loads with `blockRequests` always get the real page. `E2E_BABEL=1` compiles every load.
+- CI (`ci.yml`) runs the UI tests as three shards (`E2E_SHARD=i/3`) beside the other gates (`checks`, which
+  runs the build with `--skip-e2e`), and `ui-coverage` merges their `coverage-ui/`. The `build` job is the
+  ruleset's required check and fails unless every other job succeeded. `deploy.yml` still runs the whole
+  build in one job.
 - The build requires 100% UI function coverage: every component, handler and inline callback in the
   Babel block must run in some UI test. `npm run test:e2e && npm run coverage:ui` lists any that never
   ran, by line in the compiled script.

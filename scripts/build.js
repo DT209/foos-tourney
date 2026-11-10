@@ -70,8 +70,6 @@ function testFiles(dir, suffix) {
     .map(f => path.join(dir, f));
 }
 
-const e2eFiles = () => testFiles('test-e2e', '.e2e.js');
-
 function sha256(file) {
   return crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 }
@@ -131,7 +129,7 @@ const steps = [
       ? null
       : () => {
           fs.rmSync(path.join(ROOT, 'coverage-ui'), { recursive: true, force: true });
-          run('node', ['--test', '--test-concurrency=1', '--test-timeout=90000', ...e2eFiles()]);
+          run('node', ['scripts/run-e2e.js']);
         }
   ],
   [
