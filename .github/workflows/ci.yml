@@ -15,7 +15,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  # Every gate except the UI tests, then dist/. The UI tests run in the ui-tests shards beside it.
+  checks:
     # Pinned so the image (and its Chrome) only changes when we choose to.
     runs-on: ubuntu-24.04
     steps:
@@ -31,11 +32,64 @@ jobs:
           distribution: temurin
           java-version: 21
       - run: npm ci
-      - run: npm run build
+      - run: npm run build -- --skip-e2e
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist
           path: dist/
+
+  # The UI tests, split by file across shards (node --test-shard). Each shard keeps its raw UI coverage.
+  ui-tests:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e
+        env:
+          E2E_SHARD: ${{ matrix.shard }}/3
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ui-coverage-${{ matrix.shard }}
+          path: coverage-ui/
+          retention-days: 1
+
+  # 100% UI function coverage needs every shard's page loads together.
+  ui-coverage:
+    needs: ui-tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: ui-coverage-*
+          path: coverage-ui/
+          merge-multiple: true
+      - run: npm run coverage:ui
+
+  # The ruleset's required check. It passes only when every job above succeeded: a required job that
+  # is skipped counts as passing, so this one always runs and checks the results itself.
+  build:
+    if: always()
+    needs: [checks, ui-tests, ui-coverage]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Every job passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "checks, ui-tests, ui-coverage: $RESULTS"
+          for r in $RESULTS; do [ "$r" = success ] || exit 1; done
 
   # Every push to main that passes the build goes to the test folder.
   deploy-test:

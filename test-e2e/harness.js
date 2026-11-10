@@ -2,6 +2,11 @@
 // in headless Chrome via puppeteer-core. The page loads React, Babel and
 // Tailwind from CDNs, so these tests need network access.
 //
+// The page compiles its JSX with Babel in the browser on every load (~0.35s of
+// CPU). The first load in each test process does that for real; the harness
+// keeps the compiled script, and later loads get a page that runs it directly,
+// without Babel (see precompiledPage). Set E2E_BABEL=1 to compile every load.
+//
 // Every page load's V8 coverage of the compiled UI script is written to
 // coverage-ui/ for scripts/ui-coverage.js (set NO_UI_COVERAGE=1 to skip).
 // Chrome is found via CHROME_PATH or the usual install locations.
@@ -33,13 +38,73 @@ const CHROME_CANDIDATES = [
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript' };
 
+// Each Chrome launch gets a fresh profile, so without help every test downloads
+// React, Babel and Tailwind again. Launches in this process reuse a disk cache
+// instead. A cache dir is never shared by two running browsers: one that is in
+// use is taken off the free list until its browser closes.
+const freeCacheDirs = [];
+const allCacheDirs = [];
+function takeCacheDir() {
+  if (freeCacheDirs.length) return freeCacheDirs.pop();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'foos-e2e-cache-'));
+  allCacheDirs.push(dir);
+  return dir;
+}
+process.on('exit', () => allCacheDirs.forEach(dir => fs.rmSync(dir, { recursive: true, force: true })));
+
+// After the load event, wait until the network has been quiet this long (the
+// leaderboard fetch, the logo). Puppeteer's networkidle0 waits 500ms.
+const SETTLE = { idleTime: 100, timeout: 30000 };
+async function settle(target) {
+  await target.waitForNetworkIdle(SETTLE);
+}
+
 function findChrome() {
   return CHROME_CANDIDATES.find(p => fs.existsSync(p)) || null;
 }
 
-function startServer() {
+// The compiled UI script, exactly as Babel produced it on this process's first
+// page load: the same text, so UI coverage merges across loads either way.
+let compiledUi = null;
+const PAGE_PATH = '/TournamentManager.html';
+const COMPILED_PATH = '/__compiled-ui.js';
+const BABEL_TAG = /\n\s*<script src="[^"]*@babel\/standalone[^"]*"><\/script>/;
+const BABEL_BLOCK = /<script type="text\/babel">[\s\S]*?<\/script>/;
+
+// The page with Babel's CDN script left out and the JSX block replaced by the
+// compiled script. Fails loudly if the page no longer has either, rather than
+// quietly testing a page that differs from the real one.
+function precompiledPage() {
+  const html = fs.readFileSync(path.join(ROOT, PAGE_PATH), 'utf8');
+  if (!BABEL_TAG.test(html) || !BABEL_BLOCK.test(html)) {
+    throw new Error('harness: Babel script tag or text/babel block not found; update precompiledPage');
+  }
+  return html.replace(BABEL_TAG, '').replace(BABEL_BLOCK, `<script src="${COMPILED_PATH}"></script>`);
+}
+
+// Finds the script Babel injected for the JSX block, after a real compile.
+async function captureCompiledUi(page) {
+  if (compiledUi) return;
+  compiledUi = await page.evaluate(
+    () =>
+      [...document.scripts].find(s => !s.src && s.type !== 'text/babel' && s.text.includes('function FoosballApp('))
+        ?.text ?? null
+  );
+}
+
+// usePrecompiled(): whether this request may get the precompiled page.
+function startServer(usePrecompiled) {
   const server = http.createServer((req, res) => {
-    const file = path.join(ROOT, decodeURIComponent(new URL(req.url, 'http://x').pathname));
+    const pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (pathname === COMPILED_PATH && compiledUi) {
+      res.writeHead(200, { 'Content-Type': TYPES['.js'] }).end(compiledUi);
+      return;
+    }
+    if (pathname === PAGE_PATH && compiledUi && usePrecompiled()) {
+      res.writeHead(200, { 'Content-Type': TYPES['.html'] }).end(precompiledPage());
+      return;
+    }
+    const file = path.join(ROOT, pathname);
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
       res.writeHead(404).end();
       return;
@@ -106,9 +171,17 @@ async function openApp({
 } = {}) {
   const chrome = findChrome();
   if (!chrome) throw new Error('Chrome not found: set CHROME_PATH or run the build with --skip-e2e');
-  const server = await startServer();
+  // Blocked requests test what happens when a script fails to load, so they
+  // always get the real page with Babel.
+  const precompile = !process.env.E2E_BABEL && blockRequests.length === 0;
+  const server = await startServer(() => precompile);
   const url = `http://127.0.0.1:${server.address().port}/TournamentManager.html`;
-  const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox'] });
+  const cacheDir = takeCacheDir();
+  const browser = await puppeteer.launch({
+    executablePath: chrome,
+    headless: true,
+    args: ['--no-sandbox', `--disk-cache-dir=${cacheDir}`]
+  });
   const page = await browser.newPage();
   const collectCoverage = !process.env.NO_UI_COVERAGE;
   await page.setViewport(viewport);
@@ -161,7 +234,8 @@ async function openApp({
       extra.on('pageerror', e => app.errors.push(e.message));
       await installRemote(extra);
       extraPages.push(extra);
-      await extra.goto(`${url}${search}`, { waitUntil: 'networkidle0' });
+      await extra.goto(`${url}${search}`, { waitUntil: 'load' });
+      await settle(extra);
       return extra;
     },
     // Saves a page's coverage so far, before it navigates (navigation drops it).
@@ -176,10 +250,12 @@ async function openApp({
         await saveUiCoverage(page).catch(() => {});
       }
       await browser.close();
+      freeCacheDirs.push(cacheDir);
       await new Promise(resolve => server.close(resolve));
     },
     async load() {
-      await page.goto(url, { waitUntil: 'networkidle0' });
+      await page.goto(url, { waitUntil: 'load' });
+      await settle(page);
       await page.waitForSelector(readySelector);
     },
     // Coverage is saved per page load, so flush it before reloading.
@@ -188,7 +264,8 @@ async function openApp({
         await saveUiCoverage(page);
         await page.coverage.startJSCoverage(COVERAGE_OPTIONS);
       }
-      await page.reload({ waitUntil: 'networkidle0' });
+      await page.reload({ waitUntil: 'load' });
+      await settle(page);
       await page.waitForSelector(readySelector);
     },
     // Sets the frozen clock used from the next page load on.
@@ -376,6 +453,7 @@ async function openApp({
   });
   try {
     await app.load();
+    if (precompile) await captureCompiledUi(page);
   } catch (err) {
     await app.close();
     throw err;

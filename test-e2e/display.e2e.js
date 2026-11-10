@@ -1,13 +1,10 @@
 // Display Mode: a view-only board for TVs and phones with every table, a
 // scrolling leaderboard and scrolling match history, sized relative to the
-// screen. Also the ?display second-screen window that follows live play.
+// screen. Scrolling and the ?display window are in display-scroll.
 const { describe, it, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { openApp } = require('./harness');
-
-const BOARD = '[data-testid="display-board"]';
-const PHONE = { width: 390, height: 844 };
-const TV = { width: 1920, height: 1080 };
+const helpers = require('./display-helpers');
 
 let app;
 afterEach(async () => {
@@ -18,11 +15,7 @@ afterEach(async () => {
   assert.deepEqual(errors, [], 'no uncaught page errors');
 });
 
-const tables = () =>
-  app.page.$$eval('[data-testid="display-table"]', els =>
-    els.map(e => ({ table: e.dataset.table, live: e.dataset.live === 'true', text: e.textContent }))
-  );
-const boxOf = (page, sel) => page.$eval(sel, e => e.getBoundingClientRect().toJSON());
+const { BOARD, PHONE, TV, tables, boxOf } = helpers(() => app);
 
 describe('display mode', () => {
   it('replaces CSV Export in the header and opens a view-only board; Exit Display returns', async () => {
@@ -118,79 +111,5 @@ describe('layout and sizing', () => {
     assert.ok(standingsBox.top >= tablesBox.bottom - 1, 'stacked on a phone');
     const pageWidth = await app.page.evaluate(() => document.documentElement.scrollWidth);
     assert.ok(pageWidth <= PHONE.width, 'no sideways scrolling on a phone');
-  });
-});
-
-describe('auto-scroll', () => {
-  it('a leaderboard too long for its panel scrolls by itself', async () => {
-    app = await openApp({ viewport: PHONE });
-    await app.addAllLeaderboardPlayers();
-    await app.click('☰');
-    await app.click('Display Mode', { within: '[data-testid="mobile-menu"]' });
-    const panel = '[data-testid="display-standings"] [data-testid="auto-scroll"]';
-    const overflow = await app.page.$eval(panel, e => e.scrollHeight - e.clientHeight);
-    assert.ok(overflow > 0, 'the leaderboard overflows on a phone');
-    await app.pause(3500); // past the pause at the top
-    assert.ok((await app.page.$eval(panel, e => e.scrollTop)) > 0);
-  });
-
-  it('respects reduced motion: nothing moves on its own', async () => {
-    app = await openApp({ viewport: PHONE });
-    await app.page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
-    await app.addAllLeaderboardPlayers();
-    await app.click('☰');
-    await app.click('Display Mode', { within: '[data-testid="mobile-menu"]' });
-    await app.pause(3500);
-    assert.equal(
-      await app.page.$eval('[data-testid="display-standings"] [data-testid="auto-scroll"]', e => e.scrollTop),
-      0
-    );
-  });
-});
-
-describe('second screen', () => {
-  it('?display opens a display-only window that follows live play and never saves', async () => {
-    app = await openApp();
-    await app.addAllLeaderboardPlayers();
-    const id = await app.currentTournamentId();
-    const savedAt = () =>
-      app.page.evaluate(key => JSON.parse(localStorage.getItem(key)).savedAt, `foosTourney.tournament.${id}`);
-
-    const second = await app.openPage('?display=1');
-    await second.waitForSelector(BOARD);
-    assert.equal(await second.$('header'), null, 'board only, no control desk');
-    const before = await savedAt();
-
-    await app.click('Draw New Match'); // on the control desk
-    await second.waitForFunction(
-      () => [...document.querySelectorAll('[data-testid="display-table"]')].some(t => t.dataset.live === 'true'),
-      { timeout: 5000 }
-    );
-    assert.notEqual(await savedAt(), before, 'the desk saved');
-    const afterDesk = await savedAt();
-    await new Promise(r => setTimeout(r, 300));
-    assert.equal(await savedAt(), afterDesk, 'the display window wrote nothing');
-
-    // Exit Display in that window goes to the control desk.
-    await app.flushCoverage(second);
-    await second.evaluate(() =>
-      [...document.querySelectorAll('button')].find(b => /Exit Display/.test(b.textContent)).click()
-    );
-    await second.waitForSelector('header');
-    assert.doesNotMatch(second.url(), /display/);
-  });
-
-  it('Open on Another Screen opens the display URL in a new window', async () => {
-    app = await openApp();
-    await app.click('Display Mode');
-    await app.page.evaluate(() => {
-      window.__opened = null;
-      window.open = url => {
-        window.__opened = url;
-        return null;
-      };
-    });
-    await app.click('Open on Another Screen');
-    assert.match(await app.page.evaluate(() => window.__opened), /\?display=1&layout=top-50-50$/);
   });
 });
