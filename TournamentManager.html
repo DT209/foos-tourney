@@ -88,11 +88,12 @@
     .db-table-grid { display: grid; gap: 0.5em; grid-template-columns: repeat(auto-fill, minmax(14em, 1fr)); }
     .db-table { border: 0.12em solid #2e3543; border-radius: 0.5em; padding: 0.5em 0.6em; background: #0e1015; }
     .db-table[data-live="true"] { border-color: #7c3aed; }
-    .db-table-head { display: flex; justify-content: space-between; font-size: 0.7em; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; }
+    .db-table-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 0.6em; font-size: 0.7em; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em; }
     .db-team { font-size: 1em; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
     .db-vs { font-size: 0.65em; color: #d12328; font-weight: 900; margin: 0.15em 0; }
     .db-wins { float: right; font-size: 1em; font-weight: 900; color: #34d399; }
     .db-games { font-size: 0.7em; color: #d1d5db; margin-top: 0.3em; font-family: Menlo, Consolas, "Liberation Mono", monospace; }
+    .db-table-heading { min-width: 0; overflow-wrap: anywhere; }
     .db-free { font-size: 0.9em; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.6em 0; }
     .db-row { display: grid; grid-template-columns: 2em 1fr auto auto; gap: 0.5em; align-items: baseline; font-size: 0.8em; padding: 0.3em 0.2em; border-bottom: 0.06em solid #2e3543; }
     .db-row .db-rank { color: #9ca3af; font-weight: 800; }
@@ -153,7 +154,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=ec9364a775"></script>
+  <script src="tournament-logic.js?v=97318f8095"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -174,7 +175,7 @@
       drawMonsterMatch, deleteMatch, updateMonsterGameScore, setMonsterHandicap, setMonsterOverrideWinner,
       getMatchWinner, completeMonsterMatch, findLiveMatchAtTable, teamLabel,
       buildManualTeams, getManualTeamCandidates, setManualTeamPlayer, parseTeamCountInput,
-      createBracket, clearMatchResults, nextTournamentState, checkTableCountChange, releaseBracketTables, bothRealTeams,
+      createBracket, clearMatchResults, nextTournamentState, checkTableCountChange, setTableName, formatTableLabel, tableHeading, tableNumberLabel, TABLE_NAME_MAX_LENGTH, releaseBracketTables, bothRealTeams,
       authorizeAdminAction, editDraftFor, setDraftScore, setDraftHandicap, setDraftOverrideWinner, setDraftPlayer,
       editMatch, draftPlayerOptions, substitutePlayer,
       updateBracketGameScore, setBracketHandicap, setBracketOverrideWinner, confirmBracketMatch,
@@ -411,7 +412,7 @@
       2: 'shrink-0 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-700'
     };
 
-    function MatchCard({ match, onScoreChange, onHandicapToggle, onOverrideWinnerChange, onConfirm, locked, onEdit }) {
+    function MatchCard({ match, tableNames, onScoreChange, onHandicapToggle, onOverrideWinnerChange, onConfirm, locked, onEdit }) {
       if (!match) return null;
 
       const t1Name = bracketTeamName(match.team1);
@@ -449,7 +450,7 @@
               </span>
             ) : match.table && (
               <span className="bg-purple-950/80 text-purple-300 border border-purple-700 text-[10px] px-2 py-0.5 rounded font-bold uppercase tracking-wider">
-                Table #{match.table}
+                {formatTableLabel(tableNames, match.table)}
               </span>
             )}
           </div>
@@ -681,7 +682,7 @@
                   {board.tables.map(t => (
                     <div key={t.table} data-testid="display-table" data-table={t.table} data-live={String(t.live)} className="db-table">
                       <div className="db-table-head">
-                        <span>Table {t.table}</span>
+                        <span className="db-table-heading" data-testid="display-table-heading" title={tableNumberLabel(t.table)}>{t.heading}</span>
                         <span>{t.live ? t.label : ''}</span>
                       </div>
                       {t.live ? (
@@ -951,6 +952,7 @@
       // Configuration State
       const [tournamentName, setTournamentName] = useState(restored.tournamentName);
       const [tableCount, setTableCount] = useState(restored.tableCount);
+      const [tableNames, setTableNames] = useState(restored.tableNames);
       const [format, setFormat] = useState(restored.format);
       const [maxGames, setMaxGames] = useState(restored.maxGames);
       const [activeTab, setActiveTab] = useState(restored.activeTab);
@@ -1045,7 +1047,7 @@
 
       // The persisted tournament as one object (for saving and exporting).
       const currentTournamentState = () => ({
-        tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
+        tournamentId, startedAt, tournamentName, tableCount, tableNames, format, maxGames, activeTab,
         players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
         teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt
       });
@@ -1054,7 +1056,7 @@
       useEffect(() => {
         if (readOnlyView || isDisplayWindow) return;
         setIsSaved(saveTournament(storage, currentTournamentState()));
-      }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
+      }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, tableNames, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
           teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt]);
 
@@ -1299,7 +1301,7 @@
       const startSubstitution = () => requireAdmin('Substitute a Player', () => setSubDraft({ outId: '', inId: '' }));
 
       const saveSubstitution = () => {
-        const result = substitutePlayer({ players, matches, bracketData }, subDraft.outId, subDraft.inId);
+        const result = substitutePlayer({ players, matches, bracketData, tableNames }, subDraft.outId, subDraft.inId);
         if (result.error) {
           alert(result.error);
           return;
@@ -1406,6 +1408,7 @@
         setStartedAt(t.startedAt);
         setTournamentName(t.tournamentName);
         setTableCount(t.tableCount);
+        setTableNames(t.tableNames);
         setFormat(t.format);
         setMaxGames(t.maxGames);
         setActiveTab(t.activeTab);
@@ -1585,7 +1588,7 @@
       // table after a confirm.
       const handleTableCountChange = (value) => {
         const newCount = parseInt(value, 10);
-        const check = checkTableCountChange(matches, bracketData, newCount);
+        const check = checkTableCountChange(matches, bracketData, newCount, tableNames);
         if (check.error) {
           alert(check.error);
           return;
@@ -2951,6 +2954,26 @@
                             <option key={num} value={num}>{num} {num === 1 ? 'Table' : 'Tables'}</option>
                           ))}
                         </select>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {Array.from({ length: tableCount }, (_, i) => i + 1).map(n => (
+                            <label key={n} className="flex items-center gap-1.5">
+                              <span data-testid="table-name-number" className="text-xs font-bold text-gray-400 w-5 text-right">{n}</span>
+                              <input
+                                type="text"
+                                value={tableNames[n - 1] || ''}
+                                data-testid="table-name-input"
+                                data-table={n}
+                                aria-label={`Table ${n} name`}
+                                title="Optional Name"
+                                onChange={e => setTableNames(setTableName(tableNames, n, e.target.value))}
+                                placeholder="Optional Name"
+                                maxLength={TABLE_NAME_MAX_LENGTH}
+                                disabled={editingLocked}
+                                className="w-full min-w-0 bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
+                              />
+                            </label>
+                          ))}
+                        </div>
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 block mb-1">Match Format</label>
@@ -3252,7 +3275,7 @@
                         <div key={tableNum} data-testid="live-table" className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
                           <div className="flex justify-between items-center border-b border-cfc-border pb-3">
                             <span className="font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
-                              <span className="text-cfc-red">●</span> Table #{tableNum}
+                              <span className="text-cfc-red">●</span> <span data-testid="table-heading" title={tableNumberLabel(tableNum)}>{tableHeading(tableNames, tableNum)}</span>
                             </span>
                             <div className="flex items-center gap-2">
                               {activeMatch && (
@@ -3535,7 +3558,7 @@
                             <div key={tableNum} className="bg-cfc-panel rounded-xl border border-cfc-border p-5 space-y-4 shadow-lg">
                               <div className="flex justify-between items-center border-b border-cfc-border pb-3">
                                 <span className="font-black text-lg text-white uppercase tracking-wider flex items-center gap-2">
-                                  <span className="text-cfc-red">●</span> Table #{tableNum}
+                                  <span className="text-cfc-red">●</span> <span data-testid="table-heading" title={tableNumberLabel(tableNum)}>{tableHeading(tableNames, tableNum)}</span>
                                 </span>
                                 <span className={`text-[11px] px-2.5 py-0.5 rounded font-bold uppercase tracking-wider ${assignedItem ? 'bg-cfc-red text-white animate-pulse' : 'bg-cfc-dark text-gray-500 border border-cfc-border'}`}>
                                   {assignedItem ? 'MATCH IN PROGRESS' : 'FREE'}
@@ -3543,7 +3566,7 @@
                               </div>
 
                               {assignedItem ? (
-                                <MatchCard 
+                                <MatchCard tableNames={tableNames} 
                                   match={assignedItem.match}
                                   onScoreChange={(gIdx, key, val) => handleBracketScoreChange(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, gIdx, key, val)}
                                   onHandicapToggle={(checked) => handleBracketHandicapToggle(assignedItem.section, assignedItem.rIdx, assignedItem.mIdx, checked)}
@@ -3581,7 +3604,7 @@
                               </h4>
 
                               {roundMatches.map((match, mIdx) => (
-                                <MatchCard 
+                                <MatchCard tableNames={tableNames} 
                                   key={match.id} 
                                   match={match} 
                                   onScoreChange={(gIdx, key, val) => handleBracketScoreChange('winners', rIdx, mIdx, gIdx, key, val)}
@@ -3604,7 +3627,7 @@
                               <h3 className="text-base font-black text-cfc-red uppercase tracking-wider border-b border-cfc-border pb-1">Grand Finals</h3>
                               <div className="flex gap-6 items-start pt-2">
                                 <div className="w-80">
-                                  <MatchCard 
+                                  <MatchCard tableNames={tableNames} 
                                     match={bracketData.grandFinals[0]} 
                                     onScoreChange={(gIdx, key, val) => handleBracketScoreChange('grandFinals', 0, 0, gIdx, key, val)}
                                     onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, 0, checked)}
@@ -3623,7 +3646,7 @@
                               <h3 className="text-base font-black text-amber-400 uppercase tracking-wider border-b border-cfc-border pb-1">3rd Place Match</h3>
                               <div className="flex gap-6 items-start pt-2">
                                 <div className="w-80">
-                                  <MatchCard 
+                                  <MatchCard tableNames={tableNames} 
                                     match={bracketData.thirdPlaceMatch} 
                                     onScoreChange={(gIdx, key, val) => handleBracketScoreChange('thirdPlace', 0, 0, gIdx, key, val)}
                                     onHandicapToggle={(checked) => handleBracketHandicapToggle('thirdPlace', 0, 0, checked)}
@@ -3650,7 +3673,7 @@
                                 </h4>
 
                                 {roundMatches.map((match, mIdx) => (
-                                  <MatchCard 
+                                  <MatchCard tableNames={tableNames} 
                                     key={match.id} 
                                     match={match} 
                                     onScoreChange={(gIdx, key, val) => handleBracketScoreChange('losers', rIdx, mIdx, gIdx, key, val)}
@@ -3673,7 +3696,7 @@
                           <div className="flex gap-6 items-start pt-2">
                             {bracketData.grandFinals.map((gfMatch, gfIdx) => (
                               <div key={gfMatch.id} className="w-80">
-                                <MatchCard
+                                <MatchCard tableNames={tableNames}
                                   match={gfMatch}
                                   onScoreChange={(gIdx, key, val) => handleBracketScoreChange('grandFinals', 0, gfIdx, gIdx, key, val)}
                                   onHandicapToggle={(checked) => handleBracketHandicapToggle('grandFinals', 0, gfIdx, checked)}
@@ -3696,7 +3719,7 @@
                           </p>
                           <div className="flex gap-6 items-start pt-2">
                             <div className="w-80">
-                              <MatchCard
+                              <MatchCard tableNames={tableNames}
                                 match={bracketData.winnersRounds[bracketData.winnersRounds.length - 1][0]}
                                 onScoreChange={(gIdx, key, val) => handleBracketScoreChange('winners', bracketData.winnersRounds.length - 1, 0, gIdx, key, val)}
                                 onHandicapToggle={(checked) => handleBracketHandicapToggle('winners', bracketData.winnersRounds.length - 1, 0, checked)}

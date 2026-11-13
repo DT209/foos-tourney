@@ -102,6 +102,10 @@ enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep 
 - To add persisted state: add the field and its default to `newTournamentState`, add a validator to
   `FIELD_VALIDATORS` if its type differs from the default's, add it to `applyTournament` and the
   auto-save effect (object and dependency list) in the component, and cover it in `test/persistence.test.js`.
+- `tableNames` (`[]` by default, index 0 = table 1, validated by `FIELD_VALIDATORS.tableNames`) is additive, so
+  neither version was bumped and older files import with `[]`. Names are edited only on the setup card through
+  `setTableName`. Table box headings (pool, bracket, and `heading` on each `buildDisplayBoard` table) use `tableHeading`: the
+  name alone, or "Table N", with `tableNumberLabel` ("Table N") as the hover text. Match cards and alerts use `formatTableLabel` ("Table N · Name").
 - Bump `STORAGE_VERSION` only for incompatible shape changes, and add a migration when you do.
 - Export files use `EXPORT_FORMAT`/`EXPORT_VERSION` (`serializeTournamentExport`,
   `parseTournamentExport`). Bump `EXPORT_VERSION` for incompatible changes. Newer files are rejected,

@@ -93,6 +93,7 @@ describe('newTournamentState / restoreTournamentState', () => {
       startedAt: '2026-10-17T01:30:00.000Z',
       tournamentName: 'Thursday DYP',
       tableCount: 2,
+      tableNames: [],
       format: '2v2',
       maxGames: 3,
       activeTab: 'pool',
@@ -151,6 +152,19 @@ describe('newTournamentState / restoreTournamentState', () => {
       ...L.newTournamentState(ID, NOW),
       tableCount: 3
     });
+  });
+
+  it('carries table names into the next tournament', () => {
+    const next = L.nextTournamentState({ tableNames: ['Center', '', 'Back'] }, ID, NOW);
+    assert.deepEqual(next.tableNames, ['Center', '', 'Back']);
+  });
+
+  it('keeps valid saved table names and falls back to none for invalid ones', () => {
+    const restore = tableNames => L.restoreTournamentState({ tableNames }, opts).tableNames;
+    assert.deepEqual(restore(['Center', '']), ['Center', '']);
+    assert.deepEqual(restore(Array(10).fill('x'.repeat(20))), Array(10).fill('x'.repeat(20)));
+    const bad = ['Center', {}, 'x', Array(11).fill('a'), ['x'.repeat(21)], [5], ['a<b'], ['a>b'], [null]];
+    for (const value of bad) assert.deepEqual(restore(value), [], JSON.stringify(value));
   });
 
   it('restoring nothing starts a new tournament', () => {

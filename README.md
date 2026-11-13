@@ -89,6 +89,12 @@ flowchart TD
   so it's clear which column each team's score goes in.
 - A pending card shows no scores or Confirm until both teams are known.
 - With 3 teams in single elimination there's no 3rd place match: the semi-final loser is 3rd.
+- **Table names:** under **Tables Available** on the setup screen, each table has an optional name (up to 20
+  characters, no `<` or `>`), such as "Center". It replaces "Table 3" in the Live Match Tables headers
+  and in Display Mode (hover over it to see "Table 3"), and shows as "Table 3 · Center" on match cards and
+  in alerts. Names are saved, exported and published with the
+  tournament, carried into **New Tournament**, and kept when you lower the table count and raise it again.
+  They can't be changed while the tournament is locked, finished or read-only.
 - Lowering **Tables Available** mid-bracket asks first when a bracket match is on a removed table. If you go
   ahead, that match moves to the next free table and keeps any scores entered. An open-play match on a removed
   table must be finished or deleted first.
@@ -315,7 +321,7 @@ flowchart TD
 
 **📺 Display Mode** (upper right, or the phone menu) shows a view-only board for TVs and phones:
 
-- **Tables:** every table, who is on it, the stage (Monster match or bracket match label), games won
+- **Tables:** every table (with its name, if it has one), who is on it, the stage (Monster match or bracket match label), games won
   and the current game scores. Free tables say so.
 - **Leaderboard:** the Monster standings.
 - **Match history:** most recent first.

@@ -374,6 +374,17 @@ describe('substitutePlayer', () => {
     assert.deepEqual(L.substitutePlayer(state(), 5, 3), { error: 'P3 is playing on table 2 right now.' });
   });
 
+  it('names the table in its messages', () => {
+    const tableNames = ['', 'Center'];
+    assert.deepEqual(L.substitutePlayer(state({ tableNames }), 5, 3), {
+      error: 'P3 is playing on table 2 · Center right now.'
+    });
+    assert.equal(
+      L.substitutePlayer(state({ tableNames }), 2, 5).summary[0],
+      'P5 replaces P2 in the match on table 2 · Center.'
+    );
+  });
+
   it('accepts ids as the text a dropdown gives, including text ids', () => {
     assert.equal(L.substitutePlayer(state(), '2', '5').matches[0].team1[1].name, 'P5');
     const withText = [...roster, { ...f, id: 'p9', name: 'P9' }];

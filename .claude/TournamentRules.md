@@ -6,7 +6,7 @@ Line numbers drift: search by function name. Update this file when a rule change
 
 ## Shape of an event
 
-1. **Setup**: name, Tables Available (1-10), format (`2v2` or `1v1`), Monster best-of (1, 3, 5, 7).
+1. **Setup**: name, Tables Available (1-10) with an optional name per table (`tableNames`, `setTableName`, 20 characters, no `<` `>`, kept when the count is lowered; shown alone in table headings with `tableHeading` and "Table N" on hover, and as "Table N · Name" with `formatTableLabel`), format (`2v2` or `1v1`), Monster best-of (1, 3, 5, 7).
 2. **Monster / DYP open play**: draw fair random matches onto free tables, score them, repeat.
 3. **Brackets**: the Monster standings feed a single, double or championship elimination bracket.
 4. **Standings**: bracket places 1-3. Single elimination also computes 4th, which the page doesn't show (intended).
@@ -106,7 +106,7 @@ One format applies to the whole event: Monster and bracket both use `format`.
   read-only regardless of the PIN.
 - Persisted fields and validators (`newTournamentState`, `FIELD_VALIDATORS`) bound the rule settings: changing an allowed value (e.g. best-of 9, new strategy) means updating the validator, the `<option>` lists, export compatibility, and `test/persistence.test.js`.
 - Settings (tables, format, best-of) can be changed mid-event. Existing matches keep their game slots and format.
-- **New Tournament** (`nextTournamentState`) keeps the name, tables, format, best-of, bracket options and PIN; players, matches, bracket and lock reset.
+- **New Tournament** (`nextTournamentState`) keeps the name, tables and table names, format, best-of, bracket options and PIN; players, matches, bracket and lock reset.
 
 ## Known gaps (open GitHub issues)
 

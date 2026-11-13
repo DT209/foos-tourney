@@ -80,6 +80,16 @@ describe('parseTournamentExport', () => {
     assert.equal(t.startedAt, NOW.toISOString());
   });
 
+  it('round trips table names, and a file without them imports with none', () => {
+    const named = tournament({ tableNames: ['Center', '', 'Back'] });
+    const result = L.parseTournamentExport(L.serializeTournamentExport(named, NOW), opts);
+    assert.deepEqual(result.tournament.tableNames, ['Center', '', 'Back']);
+    const { tableNames, ...older } = tournament();
+    assert.deepEqual(tableNames, []);
+    const text = JSON.stringify({ format: 'foos-tourney', version: 1, tournament: older });
+    assert.deepEqual(L.parseTournamentExport(text, opts).tournament.tableNames, []);
+  });
+
   it('rejects a file with any invalid field, naming it', () => {
     const file = tournament =>
       JSON.stringify({ format: 'foos-tourney', version: 1, tournament: { tournamentId: ID, ...tournament } });
@@ -88,6 +98,7 @@ describe('parseTournamentExport', () => {
       matches: [[null], [{ id: 1, status: 'LIVE' }], [{ id: 1, status: 'BOGUS', team1: [], team2: [], games: [] }]],
       bracketData: [{}, { type: 'single', maxGames: 1, winnersRounds: 'x' }],
       tableCount: [0, 11, 1e9, 2.5, '3'],
+      tableNames: ['x', [5], ['x'.repeat(21)], ['<b>'], Array(11).fill('')],
       maxGames: [0, 2, 4, 9],
       bracketMaxGames: [2],
       format: ['3v3'],
