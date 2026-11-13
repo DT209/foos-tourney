@@ -98,6 +98,8 @@ globalThis.TournamentLogic = (() => {
       startedAt: now.toISOString(),
       tournamentName: 'Thursday DYP',
       tableCount: 2,
+      // Optional table names, index 0 = table 1, '' = unnamed (see setTableName).
+      tableNames: [],
       format: '2v2',
       maxGames: 3,
       activeTab: 'pool',
@@ -123,6 +125,7 @@ globalThis.TournamentLogic = (() => {
   const CARRIED_SETTINGS = [
     'tournamentName',
     'tableCount',
+    'tableNames',
     'format',
     'maxGames',
     'bracketTeamCount',
@@ -199,11 +202,16 @@ globalThis.TournamentLogic = (() => {
   const isManualSlot = p => p === null || p === undefined || isTeamPlayer(p);
   const isCustomTeam = t => isPlainObject(t) && isManualSlot(t.p1) && isManualSlot(t.p2);
 
+  const TABLE_NAME_MAX_LENGTH = 20;
+  const MAX_TABLES = 10;
+  const isTableName = v => typeof v === 'string' && v.length <= TABLE_NAME_MAX_LENGTH && !/[<>]/.test(v);
+
   // Fields whose valid values are narrower than "same type as the default".
   const FIELD_VALIDATORS = {
     tournamentId: v => typeof v === 'string' && v.length > 0,
     startedAt: v => typeof v === 'string' && !isNaN(Date.parse(v)),
     tableCount: v => Number.isInteger(v) && v >= 1 && v <= 10,
+    tableNames: v => isArrayOf(v, isTableName) && v.length <= MAX_TABLES,
     format: isOneOf(['2v2', '1v1']),
     maxGames: isOneOf(GAME_COUNTS),
     activeTab: isOneOf(['pool', 'bracket']),
@@ -1866,15 +1874,48 @@ globalThis.TournamentLogic = (() => {
     return activeAssignments;
   }
 
+  // ==========================================
+  // TABLE NAMES
+  // ==========================================
+  const tableNameAt = (tableNames, n) => String(tableNames[n - 1] || '').trim();
+
+  // A table box's heading: the name alone when one is set, otherwise "Table 3".
+  function tableHeading(tableNames, n) {
+    return tableNameAt(tableNames, n) || tableNumberLabel(n);
+  }
+
+  // "Table 3": the hover text on a heading, so a named table's number is one hover away.
+  function tableNumberLabel(n) {
+    return `Table ${n}`;
+  }
+
+  // "Table 3 · Center", or "Table 3" when the table has no name.
+  function formatTableLabel(tableNames, n) {
+    const name = tableNameAt(tableNames, n);
+    return name ? `Table ${n} · ${name}` : `Table ${n}`;
+  }
+
+  // Returns a new names array with table `table` (1..10) renamed to `raw`,
+  // cleaned and capped. Names above the current table count are kept.
+  function setTableName(tableNames, table, raw) {
+    if (!Number.isInteger(table) || table < 1 || table > MAX_TABLES) {
+      return { error: `Table must be a number from 1 to ${MAX_TABLES}.` };
+    }
+    const next = Array.from({ length: Math.max(tableNames.length, table) }, (_, i) => tableNames[i] || '');
+    next[table - 1] = sanitizeTypedText(raw, TABLE_NAME_MAX_LENGTH);
+    return next;
+  }
+
   // Checks lowering Tables Available to `newCount`. A live Monster match on a
   // removed table must be finished or deleted first ({ error }). Bracket
   // matches on removed tables need a confirm ({ confirm: message }): they go
   // back in the queue for the next free table. {} when nothing is affected.
-  function checkTableCountChange(matches, bracketData, newCount) {
+  function checkTableCountChange(matches, bracketData, newCount, tableNames = []) {
+    const label = n => formatTableLabel(tableNames, n);
     const monster = matches.filter(m => m.status === 'LIVE' && m.table > newCount).map(m => m.table);
     if (monster.length > 0) {
       return {
-        error: `Table ${monster.join(', ')} has an open-play match in progress. Finish or delete it before removing the table.`
+        error: `${monster.map(label).join(', ')} has an open-play match in progress. Finish or delete it before removing the table.`
       };
     }
     const bracket = bracketData
@@ -1883,7 +1924,7 @@ globalThis.TournamentLogic = (() => {
     if (bracket.length === 0) return {};
     const lines = bracket.map(({ match }) => {
       const teams = `${bracketTeamName(match.team1)} vs ${bracketTeamName(match.team2)}`;
-      return `Table ${match.table}: ${match.label} (${teams})`;
+      return `${label(match.table)}: ${match.label} (${teams})`;
     });
     return {
       confirm: `A bracket match is drawn on a table you're removing:\n\n${lines.join('\n')}\n\nReduce to ${newCount} ${newCount === 1 ? 'table' : 'tables'} anyway? The match moves to the next free table and keeps any scores entered.`
@@ -2180,7 +2221,7 @@ globalThis.TournamentLogic = (() => {
   // paused and the replacement made active.
   // `outValue` and `inValue` are player ids, or their text from a <select>.
   // Returns { error } or { players, matches, bracketData, summary: [lines] }.
-  function substitutePlayer({ players, matches, bracketData }, outValue, inValue) {
+  function substitutePlayer({ players, matches, bracketData, tableNames = [] }, outValue, inValue) {
     const out = findById(players, outValue);
     const incoming = findById(players, inValue);
     if (!out || !incoming) return { error: 'Pick the player who is leaving and their replacement.' };
@@ -2189,7 +2230,8 @@ globalThis.TournamentLogic = (() => {
     const inId = incoming.id;
 
     const busy = matches.find(m => m.status === 'LIVE' && [...m.team1, ...m.team2].some(p => p.id === inId));
-    if (busy) return { error: `${incoming.name} is playing on table ${busy.table} right now.` };
+    const where = n => formatTableLabel(tableNames, n).replace(/^Table/, 'table');
+    if (busy) return { error: `${incoming.name} is playing on ${where(busy.table)} right now.` };
 
     const bracketMatches = bracketData ? listBracketMatches(bracketData).map(({ match }) => match) : [];
     const stillPlaying = team =>
@@ -2203,7 +2245,7 @@ globalThis.TournamentLogic = (() => {
     const swap = team => team.map(p => (p.id === outId ? { ...incoming } : p));
     const updatedMatches = matches.map(m => {
       if (m.status !== 'LIVE' || ![...m.team1, ...m.team2].some(p => p.id === outId)) return m;
-      summary.push(`${incoming.name} replaces ${out.name} in the match on table ${m.table}.`);
+      summary.push(`${incoming.name} replaces ${out.name} in the match on ${where(m.table)}.`);
       return { ...m, team1: swap(m.team1), team2: swap(m.team2) };
     });
 
@@ -2412,13 +2454,15 @@ globalThis.TournamentLogic = (() => {
   // tables: one entry per table (a live Monster match takes precedence over a
   // bracket assignment); standings: ranked like computeStandings; history:
   // completed matches, most recent first.
-  function buildDisplayBoard({ matches, bracketAssignments, tableCount, players, completedMatches }) {
+  function buildDisplayBoard({ matches, bracketAssignments, tableCount, players, completedMatches, tableNames = [] }) {
     const tables = Array.from({ length: tableCount }, (_, i) => {
       const table = i + 1;
+      const heading = tableHeading(tableNames, table);
       const monster = findLiveMatchAtTable(matches, table);
       if (monster) {
         return {
           table,
+          heading,
           live: true,
           stage: 'Monster',
           label: 'Monster match',
@@ -2429,10 +2473,11 @@ globalThis.TournamentLogic = (() => {
         };
       }
       const assigned = bracketAssignments[i];
-      if (!assigned) return { table, live: false };
+      if (!assigned) return { table, heading, live: false };
       const { match } = assigned;
       return {
         table,
+        heading,
         live: true,
         stage: 'Playoffs',
         label: match.label,
@@ -2872,6 +2917,7 @@ globalThis.TournamentLogic = (() => {
         matches: state.matches,
         bracketAssignments: assignBracketTables(state.bracketData, state.tableCount),
         tableCount: state.tableCount,
+        tableNames: state.tableNames,
         players: state.players,
         completedMatches: getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId)
       }),
@@ -3149,6 +3195,11 @@ globalThis.TournamentLogic = (() => {
     listBracketMatches,
     assignBracketTables,
     checkTableCountChange,
+    TABLE_NAME_MAX_LENGTH,
+    setTableName,
+    formatTableLabel,
+    tableHeading,
+    tableNumberLabel,
     releaseBracketTables,
     bothRealTeams,
     getMatchCardState,

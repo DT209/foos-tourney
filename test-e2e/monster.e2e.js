@@ -110,7 +110,7 @@ describe('clearing and export', () => {
     await app.buildBracket({ teams: 4, elim: 'single' });
     await app.playCard(await app.playableCard('bracket-winners'), 1);
     const teamsBefore = await app.page.$$eval('[data-testid="bracket-winners"] [data-testid="match-card"]', cards =>
-      cards.slice(0, 2).map(c => c.textContent.replace(/✓ Winner|✓ Complete|Table #\d+/g, ''))
+      cards.slice(0, 2).map(c => c.textContent.replace(/✓ Winner|✓ Complete|Table \d+/g, ''))
     );
     await app.click('Monster / Open Play Stage');
     await app.click('Clear Matches');

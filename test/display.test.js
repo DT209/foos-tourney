@@ -33,6 +33,7 @@ describe('buildDisplayBoard', () => {
     assert.deepEqual(board.tables, [
       {
         table: 1,
+        heading: 'Table 1',
         live: true,
         stage: 'Monster',
         label: 'Monster match',
@@ -44,9 +45,10 @@ describe('buildDisplayBoard', () => {
         ],
         wins: [1, 0]
       },
-      { table: 2, live: false },
+      { table: 2, heading: 'Table 2', live: false },
       {
         table: 3,
+        heading: 'Table 3',
         live: true,
         stage: 'Playoffs',
         label: semi.label,
@@ -71,6 +73,30 @@ describe('buildDisplayBoard', () => {
     assert.deepEqual([board.tables[1].team2, board.tables[1].games, board.tables[1].wins], ['TBD', [], [0, 0]]);
   });
 
+  it('a trimmed table name replaces Table N in the heading, whatever is on the table', () => {
+    const board = L.buildDisplayBoard({
+      matches: [liveMonster],
+      bracketAssignments: assignments,
+      tableCount: 3,
+      tableNames: ['Center', ' ', '  Back '],
+      players: [],
+      completedMatches: []
+    });
+    assert.deepEqual(
+      board.tables.map(t => t.heading),
+      ['Center', 'Table 2', 'Back']
+    );
+  });
+
+  it('boardForTournament passes the names and a rename changes the watched sections', () => {
+    const state = { ...L.newTournamentState('id', new Date(0)), tableNames: ['Center'] };
+    const board = L.boardForTournament(state);
+    assert.equal(board.tables[0].heading, 'Center');
+    const renamed = L.boardForTournament({ ...state, tableNames: ['Back'] });
+    assert.equal(L.watchedChanged(L.watchedSections(board), L.watchedSections(renamed)), true);
+    assert.equal(L.watchedChanged(L.watchedSections(board), L.watchedSections(L.boardForTournament(state))), false);
+  });
+
   it('works without bracket assignments', () => {
     const board = L.buildDisplayBoard({
       matches: [],
@@ -79,7 +105,7 @@ describe('buildDisplayBoard', () => {
       players: [],
       completedMatches: []
     });
-    assert.deepEqual(board.tables, [{ table: 1, live: false }]);
+    assert.deepEqual(board.tables, [{ table: 1, heading: 'Table 1', live: false }]);
   });
 
   it('ranks the leaderboard like the standings, with paused players flagged', () => {

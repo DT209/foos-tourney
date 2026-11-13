@@ -601,8 +601,16 @@ describe('checkTableCountChange / releaseBracketTables', () => {
 
   it('refuses while an open-play match is live on a removed table', () => {
     assert.deepEqual(L.checkTableCountChange([live(1), live(3), live(4)], null, 2), {
-      error: 'Table 3, 4 has an open-play match in progress. Finish or delete it before removing the table.'
+      error: 'Table 3, Table 4 has an open-play match in progress. Finish or delete it before removing the table.'
     });
+  });
+
+  it('names tables in the refusal and the confirm', () => {
+    const names = ['', '', 'Center', ''];
+    assert.match(L.checkTableCountChange([live(3)], null, 2, names).error, /^Table 3 · Center has an open-play/);
+    const two = L.generateBracketStructure(teams(8), 'single', 1);
+    L.assignBracketTables(two, 4);
+    assert.match(L.checkTableCountChange([], two, 2, names).confirm, /Table 3 · Center: .*\nTable 4: /);
   });
 
   it('asks before moving bracket matches off removed tables, listing each', () => {
