@@ -54,6 +54,25 @@ describe('drawing matches', () => {
     assert.match(app.dialogs.at(-1), /delete this match/);
     assert.doesNotMatch(await app.text(), /MATCH IN PROGRESS/);
   });
+
+  it('deleting a mistaken draw puts the missed-draw counts back', async () => {
+    app = await openApp();
+    await app.addAllLeaderboardPlayers();
+    const counts = () =>
+      app.page.evaluate(() => {
+        const id = localStorage.getItem('foosTourney.currentTournament');
+        const record = JSON.parse(localStorage.getItem('foosTourney.tournament.' + id));
+        return record.state.players.map(p => p.eligibleDrawsMissed);
+      });
+    await app.pause();
+    const before = await counts();
+    await app.click('Draw New Match');
+    await app.pause();
+    assert.notDeepEqual(await counts(), before, 'players left out of the draw gain a count');
+    await app.click('Delete', { within: '[data-testid="live-table"]' });
+    await app.pause();
+    assert.deepEqual(await counts(), before);
+  });
 });
 
 describe('scoring', () => {

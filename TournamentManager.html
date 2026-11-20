@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=ec9364a775"></script>
+  <script src="tournament-logic.js?v=06adf0c398"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -1608,7 +1608,9 @@
 
       const handleDeleteMatch = (matchId) => {
         if (confirm('Are you sure you want to delete this match? Table will be freed.')) {
-          setMatches(deleteMatch(matches, matchId));
+          const result = deleteMatch(players, matches, matchId);
+          setPlayers(result.players);
+          setMatches(result.matches);
         }
       };
 

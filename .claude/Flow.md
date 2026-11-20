@@ -112,7 +112,9 @@ flowchart TD
 ## 4. Matchmaking: `drawFairMatch`
 
 `drawMonsterMatch` finds a table with `findFreeTable`, calls `drawFairMatch`, then builds the match
-with `createGameSlots`.
+with `createGameSlots`, storing `skippedIds` on it as `skipped` and rebuilding the counters with
+`recomputeDrawCounters`. `deleteMatch`, `substitutePlayer` and `editMonsterMatch` rebuild them the same
+way.
 
 ```mermaid
 flowchart TD
@@ -129,9 +131,9 @@ flowchart TD
     FM -- "2v2" --> Q2["p2: teammate penalty vs p1"]
     Q2 --> Q3["p3: opponent penalty vs p1 and p2"]
     Q3 --> Q4["p4: teammate penalty vs p3 plus opponent penalty vs p1 and p2"]
-    Q1 --> UP["Update eligibleDrawsMissed"]
+    Q1 --> UP["skippedIds: available players not drawn"]
     Q4 --> UP
-    UP --> OUT["{ team1, team2, updatedPlayers }"]
+    UP --> OUT["{ team1, team2, skippedIds }"]
 ```
 
 `pickLowestPenalty` scores each candidate:
@@ -145,8 +147,8 @@ flowchart LR
     SC --> LW["Lowest total wins"]
 ```
 
-Weights: `W_TEAMMATE` 300, `W_OPPONENT` 100. Drawn players reset `eligibleDrawsMissed` to 0. Active,
-idle, undrawn players gain 1.
+Weights: `W_TEAMMATE` 300, `W_OPPONENT` 100. `eligibleDrawsMissed` is rebuilt from the match list: a
+player on a match resets to 0, and each match whose `skipped` lists them adds 1.
 
 ## 5. Bracket lifecycle
 
@@ -331,7 +333,7 @@ replace the adapter with `test-e2e/fake-remote.js`, which records every call.
 | Publishing (Firebase)            | `watchedSections`, `publishThrottle`, `publishedDocument`, `publishDecision`, `nextFreeSlot`, `claimWrites`, `replaceWrites`, `publishWrites`, `takeOverWrites`, `displayChoices`, `initialDisplaySource`, `generatePublisherCode`, `parsePublisherCodeFile`, `copyToClipboard`, `boardForTournament`, `canFinishTournament`, `finishTournament`, `tournamentEditLock`, `publishStartOutcome`, `takeOverOutcome`, `parsePublishedTournament`, `publishedDownload`, `qrModules`, `qrSvgPath`, `choiceViewerUrl`, `isLocalOnlyUrl` |
 | Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`, `recomputeDrawCounters`                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Bracket generation               | `createBracket`, `manualTeamsError`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`, `checkTableCountChange`, `releaseBracketTables`                                                                                                                                                                                                                                                                                                                                 |
