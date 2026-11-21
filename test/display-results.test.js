@@ -16,6 +16,18 @@ function bracket(winner) {
   return L.confirmBracketMatch(b, 'grandFinals', 0, 0).bracket;
 }
 
+// A four-team bracket played out with team1 always winning: places 1 to 4.
+function fourTeamBracket() {
+  let b = L.generateBracketStructure(teams(4), 'single', 1);
+  for (let guard = 0; guard < 20; guard++) {
+    const next = L.listBracketMatches(b).find(({ match }) => match.status === 'READY');
+    if (!next) break;
+    scoreFor(next.match, 1);
+    b = L.confirmBracketMatch(b, next.section, next.rIdx, next.mIdx).bracket;
+  }
+  return b;
+}
+
 const tournament = (winner, id = ID) => ({ ...L.newTournamentState(id, NOW), bracketData: bracket(winner) });
 
 describe('bracketResults', () => {
@@ -33,9 +45,31 @@ describe('bracketResults', () => {
     assert.equal(L.bracketResults(empty), null, 'complete but with nobody placed');
   });
 
+  it('stops at third place', () => {
+    const b = fourTeamBracket();
+    assert.equal(L.calculateBracketStandings(b).length, 4);
+    assert.deepEqual(
+      L.bracketResults(b).map(r => [r.place, r.team.name]),
+      [
+        [1, 'T1'],
+        [2, 'T2'],
+        [3, 'T4']
+      ]
+    );
+  });
+
   it('is on the Display Mode board', () => {
     assert.equal(L.boardForTournament(tournament(null)).results, null);
     assert.equal(L.boardForTournament(tournament(1)).results[0].team.name, 'T1');
+  });
+
+  it('is still on the board once the tournament is finished', () => {
+    const open = tournament(1);
+    const finished = { ...open, ...L.finishTournament(open, NOW) };
+    assert.notEqual(finished.finishedAt, null);
+    const board = L.boardForTournament(finished);
+    assert.equal(board.finished, true);
+    assert.equal(board.results[0].team.name, 'T1');
   });
 });
 

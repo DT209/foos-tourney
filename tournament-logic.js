@@ -2864,8 +2864,6 @@ globalThis.TournamentLogic = (() => {
     }
   }
 
-  // The Display Mode board for any tournament state (the open one, or one
-  // read from Firebase).
   // The top three places once the bracket is complete, or null before then.
   function bracketResults(bracketData) {
     if (!bracketData || !bracketData.isCompleted) return null;
@@ -2897,6 +2895,8 @@ globalThis.TournamentLogic = (() => {
     return { seen: next, show: next.champion === seen.champion ? null : true };
   }
 
+  // The Display Mode board for any tournament state (the open one, or one
+  // read from Firebase).
   function boardForTournament(state) {
     return {
       ...buildDisplayBoard({
