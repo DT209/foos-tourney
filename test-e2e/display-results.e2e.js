@@ -1,7 +1,7 @@
 // Display Mode's results pop-up (issue 23): it opens by itself when the shown
 // tournament's bracket completes or its champion changes, and View Results
-// reopens it. Covers a followed published tournament and a ?display=1 window
-// following this device's tournament.
+// reopens it. Covers a followed published tournament, a ?display=1 window
+// following this device's tournament, and Display Mode opened in place.
 const { describe, it, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { openApp } = require('./harness');
@@ -144,5 +144,30 @@ describe('Display Mode results', () => {
     await screen.$eval('[data-testid="close-results"]', e => e.click());
     await screen.waitForSelector(DIALOG, { hidden: true });
     await app.flushCoverage(screen);
+  });
+
+  it("Display Mode opened from the control desk shows this device's results on demand only", async () => {
+    app = await openApp();
+    const id = await app.currentTournamentId();
+    await app.page.evaluate(
+      (fn, id) => {
+        const state = new Function(`return (${fn})`)()(id, 1);
+        window.TournamentLogic.saveTournament(localStorage, state);
+      },
+      bracketTournament.toString(),
+      id
+    );
+    await app.reload();
+    await app.click('Display Mode');
+    await app.page.waitForSelector(BOARD);
+    assert.equal(await app.page.$(DIALOG), null, 'an already complete tournament does not pop up');
+
+    await app.click('🏆 View Results', { within: BOARD });
+    const text = await dialogText();
+    assert.match(text, /Tournament Complete!/);
+    assert.match(text, /Jes Herman & Burrito.*1st Place.*Zack & Jay.*2nd Place/);
+    assert.doesNotMatch(text, /Is the tournament done\?|Export/);
+    await app.click('Close Results');
+    assert.equal(await app.page.$(DIALOG), null);
   });
 });
