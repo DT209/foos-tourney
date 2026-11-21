@@ -2896,6 +2896,12 @@ globalThis.TournamentLogic = (() => {
     return playStartedAt === null ? now.toISOString() : playStartedAt;
   }
 
+  // Keeps the first end time, so correcting a result after the final doesn't
+  // stretch the duration; sets it when the final results first show.
+  function markPlayEnded(playEndedAt, now) {
+    return playEndedAt === null ? now.toISOString() : playEndedAt;
+  }
+
   // Whole minutes between start and end, or null while either is missing or
   // the end is before the start.
   function playDurationMinutes(playStartedAt, playEndedAt) {
@@ -2908,6 +2914,13 @@ globalThis.TournamentLogic = (() => {
   function formatDuration(minutes) {
     if (minutes < 60) return `${minutes} min`;
     return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min`;
+  }
+
+  // "1 h 35 min" for the results dialog, or null while either time is missing
+  // or the end is before the start.
+  function playDurationText(playStartedAt, playEndedAt) {
+    const minutes = playDurationMinutes(playStartedAt, playEndedAt);
+    return minutes === null ? null : formatDuration(minutes);
   }
 
   // ==========================================
@@ -3270,6 +3283,8 @@ globalThis.TournamentLogic = (() => {
     canFinishTournament,
     finishTournament,
     markPlayStarted,
+    markPlayEnded,
+    playDurationText,
     playDurationMinutes,
     formatDuration,
     tournamentEditLock,

@@ -129,7 +129,8 @@ enforces (matchmaking, scoring, standings, brackets) and their known gaps. Keep 
   Other windows follow layout changes through `storage` events (`isDisplayLayoutKey`), and `?layout=`
   links (`layoutParam`, `layoutFromSearch`) carry it to other devices. Below 48em everything stacks.
 - `playStartedAt` / `playEndedAt` (persisted, exported, published): set to the first Draw New Match and to the moment
-  the final results show (`markPlayStarted`, `playDurationMinutes`, `formatDuration`). Clear Matches resets both.
+  the final results first show (`markPlayStarted`, `markPlayEnded`, `playDurationText`). Later corrections keep the first
+  end. Build Bracket starts the clock if no match was drawn and clears the end; Clear Matches resets both.
 - `finishedAt` (persisted, exported, published) marks a finished tournament. `tournamentEditLock` returns
   `'finished'` before `'readOnly'` or `'pin'`, so nothing on the page lifts it; the admin-lock buttons are hidden
   and only New Tournament, Saved Tournaments, Import, Take Over and the exports stay available. Gate any new

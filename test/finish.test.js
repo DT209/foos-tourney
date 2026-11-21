@@ -113,6 +113,17 @@ describe('play duration', () => {
     assert.equal(L.markPlayStarted(START, NOW), START);
   });
 
+  it('markPlayEnded keeps the first end time', () => {
+    assert.equal(L.markPlayEnded(null, NOW), NOW.toISOString());
+    assert.equal(L.markPlayEnded(START, NOW), START);
+  });
+
+  it('playDurationText is null without a valid span, else formatted', () => {
+    assert.equal(L.playDurationText(null, START), null);
+    assert.equal(L.playDurationText(START, '2026-10-30T17:00:00.000Z'), null);
+    assert.equal(L.playDurationText(START, '2026-10-30T19:35:00.000Z'), '1 h 35 min');
+  });
+
   it('playDurationMinutes needs both times and a sane order', () => {
     assert.equal(L.playDurationMinutes(null, null), null);
     assert.equal(L.playDurationMinutes(START, null), null);

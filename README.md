@@ -268,6 +268,11 @@ page load in the UI suite (`scripts/ui-coverage.js`). Babel's injected helpers a
   shows it as **Final**. To correct a finished tournament, Export JSON, edit the file, and Import it with
   **Replace Saved Copy**; setting `"finishedAt": null` reopens it. CSV files can't be imported: they only hold
   match results.
+- **Play time:** the tournament starts at the first **Draw New Match** (or at **Build Bracket** if no open-play match
+  was drawn) and ends when the final results first show. **Tournament Complete!** lists Start, End and Duration, and
+  the setup panel shows **Ended** under **Started**. Correcting a result afterwards keeps the first end time.
+  Redrawing the bracket or **Clear Matches** clears the end time (Clear Matches clears the start too). Both times are
+  saved and exported as `playStartedAt` and `playEndedAt`.
 
 ## Exporting and importing tournaments
 

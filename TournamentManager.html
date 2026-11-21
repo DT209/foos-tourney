@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=c305661b9b"></script>
+  <script src="tournament-logic.js?v=cd855e401e"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -185,7 +185,7 @@
       loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, markPlayStarted, playDurationMinutes, formatDuration, tournamentEditLock, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, markPlayStarted, markPlayEnded, playDurationText, tournamentEditLock, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -1299,7 +1299,7 @@
         setEditDraft(null);
         if (result.finished) {
           setShowWinnerModal(true);
-          setPlayEndedAt(new Date().toISOString());
+          setPlayEndedAt(markPlayEnded(playEndedAt, new Date()));
         }
       };
 
@@ -1685,6 +1685,9 @@
         }
 
         setBracketData(result.bracket);
+        // A bracket-only event starts here; a redraw means the final is no longer shown.
+        setPlayStartedAt(markPlayStarted(playStartedAt, new Date()));
+        setPlayEndedAt(null);
         setShowBracketModal(false);
         setActiveTab('bracket');
       };
@@ -1709,7 +1712,7 @@
         }
         if (result.finished) {
           setShowWinnerModal(true);
-          setPlayEndedAt(new Date().toISOString());
+          setPlayEndedAt(markPlayEnded(playEndedAt, new Date()));
         }
         setBracketData(result.bracket);
       };
@@ -2691,8 +2694,8 @@
                     <div data-testid="play-duration" className="text-xs text-gray-300 bg-cfc-dark/80 p-3 rounded-lg border border-cfc-border space-y-1">
                       <div>Start: {formatStartedAt(playStartedAt)}</div>
                       <div>End: {formatStartedAt(playEndedAt)}</div>
-                      {playDurationMinutes(playStartedAt, playEndedAt) !== null && (
-                        <div className="font-bold text-white">Duration: {formatDuration(playDurationMinutes(playStartedAt, playEndedAt))}</div>
+                      {playDurationText(playStartedAt, playEndedAt) !== null && (
+                        <div className="font-bold text-white">Duration: {playDurationText(playStartedAt, playEndedAt)}</div>
                       )}
                     </div>
                   )}
