@@ -18,7 +18,7 @@
 
 globalThis.FirebaseRemote = (() => {
   // Pinned compat build of the Firebase JS SDK, loaded only when configured.
-  const SDK_VERSION = '12.19.0';
+  const SDK_VERSION = '13.4.0';
   const SDK_FILES = ['app', 'auth', 'firestore'];
   const CLAIM_RETRIES = 3;
 
