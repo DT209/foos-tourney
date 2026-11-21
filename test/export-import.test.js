@@ -101,7 +101,12 @@ describe('parseTournamentExport', () => {
     const ok = { ...player(1), id: 'p-1' };
     cases.players.push([{ ...ok, id: '' }], [{ ...ok, wins: -1 }], [{ ...ok, eligibleDrawsMissed: 'x' }]);
     const match = { id: 1, status: 'DONE', team1: [ok], team2: [ok], games: [{ t1: 5, t2: 3 }], winner: 2 };
-    cases.matches.push([{ ...match, winner: 3 }], [{ ...match, games: [{ t1: null, t2: 1 }] }]);
+    cases.matches.push(
+      [{ ...match, winner: 3 }],
+      [{ ...match, games: [{ t1: null, t2: 1 }] }],
+      [{ ...match, skipped: [''] }],
+      [{ ...match, skipped: 'p-1' }]
+    );
     for (const [field, values] of Object.entries(cases)) {
       for (const value of values) {
         assert.deepEqual(
@@ -129,7 +134,15 @@ describe('parseTournamentExport', () => {
         { ...player(2), eligibleDrawsMissed: undefined }
       ],
       matches: [
-        { id: 'm1', status: 'DONE', team1: [player(1)], team2: [player(2)], games: [{ t1: 5, t2: '3' }], winner: 2 }
+        {
+          id: 'm1',
+          status: 'DONE',
+          team1: [player(1)],
+          team2: [player(2)],
+          games: [{ t1: 5, t2: '3' }],
+          winner: 2,
+          skipped: ['p-1', 3]
+        }
       ],
       bracketData: L.generateBracketStructure(teams(5), 'double', 3)
     };

@@ -92,7 +92,7 @@ describe('drawFairMatch', () => {
     assert.notEqual(result.team1[1].id, 5);
   });
 
-  it('updates draw-missed counters: drawn reset, idle eligible +1, others unchanged', () => {
+  it('lists the eligible players who were not drawn, leaving out paused and busy ones', () => {
     const roster = [
       player(1, 'A', { eligibleDrawsMissed: 3 }),
       player(2),
@@ -105,14 +105,12 @@ describe('drawFairMatch', () => {
     ];
     const live = [match('LIVE', [player(8)], [])];
     const result = L.drawFairMatch(roster, live, '2v2', zero);
-    const byId = Object.fromEntries(result.updatedPlayers.map(p => [p.id, p]));
     const drawn = [...result.team1, ...result.team2].map(p => p.id);
-    drawn.forEach(id => assert.equal(byId[id].eligibleDrawsMissed, 0));
-    roster
-      .filter(p => p.active && p.id !== 8 && !drawn.includes(p.id))
-      .forEach(p => assert.equal(byId[p.id].eligibleDrawsMissed, (p.eligibleDrawsMissed || 0) + 1));
-    assert.equal(byId[7], roster[6]);
-    assert.equal(byId[8], roster[7]);
+    assert.equal(result.skippedIds.length, 2);
+    assert.deepEqual(
+      [...drawn, ...result.skippedIds].sort((x, y) => x - y),
+      [1, 2, 3, 4, 5, 6]
+    );
   });
 
   it('defaults to 2v2 and Math.random', () => {

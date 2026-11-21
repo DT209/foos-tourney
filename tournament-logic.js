@@ -176,7 +176,8 @@ globalThis.TournamentLogic = (() => {
     isArrayOf(m.team2, isTeamPlayer) &&
     isArrayOf(m.games, isGame) &&
     isWinner(m.winner) &&
-    isWinner(m.overrideWinner);
+    isWinner(m.overrideWinner) &&
+    (m.skipped === undefined || isArrayOf(m.skipped, isId));
   const isBracketTeam = t => t === null || isNamed(t);
   const isBracketMatch = m =>
     isPlainObject(m) &&
@@ -872,20 +873,28 @@ globalThis.TournamentLogic = (() => {
       team2 = [p3, p4];
     }
 
-    // Drawn players reset their "missed" counter; idle active players who
-    // were eligible but not picked accumulate one.
+    // Players who could have been drawn but weren't. Stored on the match so
+    // the "missed draws" counters can be rebuilt from history.
     const drawnIds = new Set([...team1, ...team2].map(p => p.id));
-    const updatedPlayers = players.map(p => {
-      if (p.active && !busyPlayerIds.has(p.id) && !drawnIds.has(p.id)) {
-        return { ...p, eligibleDrawsMissed: (p.eligibleDrawsMissed || 0) + 1 };
-      }
-      if (drawnIds.has(p.id)) {
-        return { ...p, eligibleDrawsMissed: 0 };
-      }
-      return p;
-    });
+    const skippedIds = availablePlayers.filter(p => !drawnIds.has(p.id)).map(p => p.id);
 
-    return { team1, team2, updatedPlayers };
+    return { team1, team2, skippedIds };
+  }
+
+  // Rebuilds every player's eligibleDrawsMissed from the Monster matches in
+  // draw order: +1 for each match a player was skipped in (`skipped`), back to
+  // 0 for each match they are on. Deleting a match or swapping a player is then
+  // reflected automatically. Matches saved before `skipped` existed only reset.
+  function recomputeDrawCounters(players, matches) {
+    const missed = new Map(players.map(p => [p.id, 0]));
+    const bump = (id, value) => {
+      if (missed.has(id)) missed.set(id, value === undefined ? missed.get(id) + 1 : value);
+    };
+    matches.forEach(m => {
+      (m.skipped || []).forEach(id => bump(id));
+      [...m.team1, ...m.team2].forEach(p => bump(p.id, 0));
+    });
+    return players.map(p => ({ ...p, eligibleDrawsMissed: missed.get(p.id) }));
   }
 
   // ==========================================
@@ -931,14 +940,20 @@ globalThis.TournamentLogic = (() => {
       games: createGameSlots(maxGames),
       overrideWinner: null,
       isHandicap: false,
-      status: 'LIVE'
+      status: 'LIVE',
+      skipped: result.skippedIds
     };
 
-    return { players: result.updatedPlayers, matches: [...matches, newMatch] };
+    const updatedMatches = [...matches, newMatch];
+    return { players: recomputeDrawCounters(players, updatedMatches), matches: updatedMatches };
   }
 
-  function deleteMatch(matches, matchId) {
-    return matches.filter(m => m.id !== matchId);
+  // Removes a match (e.g. a mistaken draw). The "missed draws" counters are
+  // rebuilt, so the draw's effect on them is undone too.
+  // Returns { players, matches }.
+  function deleteMatch(players, matches, matchId) {
+    const remaining = matches.filter(m => m.id !== matchId);
+    return { players: recomputeDrawCounters(players, remaining), matches: remaining };
   }
 
   function updateMatchById(matches, matchId, updater) {
@@ -2033,7 +2048,7 @@ globalThis.TournamentLogic = (() => {
     edited.winner = winner;
 
     const updated = matches.map(m => (m.id === old.id ? edited : m));
-    return { players: recomputePlayerStats(players, updated), matches: updated };
+    return { players: recomputeDrawCounters(recomputePlayerStats(players, updated), updated), matches: updated };
   }
 
   // Rebuilds the bracket from its original teams and replays every confirmed
@@ -2228,7 +2243,12 @@ globalThis.TournamentLogic = (() => {
       if (p.id === inId) return { ...p, active: true };
       return p;
     });
-    return { players: updatedPlayers, matches: updatedMatches, bracketData: updatedBracket, summary };
+    return {
+      players: recomputeDrawCounters(updatedPlayers, updatedMatches),
+      matches: updatedMatches,
+      bracketData: updatedBracket,
+      summary
+    };
   }
 
   // ==========================================
@@ -3188,6 +3208,7 @@ globalThis.TournamentLogic = (() => {
     // corrections (admin)
     authorizeAdminAction,
     recomputePlayerStats,
+    recomputeDrawCounters,
     editDraftFor,
     setDraftScore,
     setDraftHandicap,
