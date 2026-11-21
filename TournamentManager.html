@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=ec9364a775"></script>
+  <script src="tournament-logic.js?v=c305661b9b"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -185,7 +185,7 @@
       loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, tournamentEditLock, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, markPlayStarted, playDurationMinutes, formatDuration, tournamentEditLock, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -965,6 +965,9 @@
       // When the tournament was finished (null while it runs). A finished
       // tournament is read-only here for good; see tournamentEditLock.
       const [finishedAt, setFinishedAt] = useState(restored.finishedAt);
+      // Play time: first Draw New Match to the final results.
+      const [playStartedAt, setPlayStartedAt] = useState(restored.playStartedAt);
+      const [playEndedAt, setPlayEndedAt] = useState(restored.playEndedAt);
       const [isLocked, setIsLocked] = useState(restored.isLocked);
       const [pinInput, setPinInput] = useState('');
       const [showPinModal, setShowPinModal] = useState(false);
@@ -1047,7 +1050,8 @@
       const currentTournamentState = () => ({
         tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
         players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt
+        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt,
+        playStartedAt, playEndedAt
       });
 
       // --- AUTO-SAVE (paused while viewing a file read-only) ---
@@ -1056,7 +1060,7 @@
         setIsSaved(saveTournament(storage, currentTournamentState()));
       }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt]);
+          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt, playStartedAt, playEndedAt]);
 
       // --- DISPLAY WINDOW: follow the control desk's saves in other tabs/windows ---
       useEffect(() => {
@@ -1293,7 +1297,10 @@
         setMatches(result.matches);
         setBracketData(result.bracketData);
         setEditDraft(null);
-        if (result.finished) setShowWinnerModal(true);
+        if (result.finished) {
+          setShowWinnerModal(true);
+          setPlayEndedAt(new Date().toISOString());
+        }
       };
 
       const startSubstitution = () => requireAdmin('Substitute a Player', () => setSubDraft({ outId: '', inId: '' }));
@@ -1395,6 +1402,8 @@
         setMatches(cleared.matches);
         setBracketData(cleared.bracketData);
         setPlayers(cleared.players);
+        setPlayStartedAt(null);
+        setPlayEndedAt(null);
         setShowClearMatchesWarning(false);
       };
 
@@ -1421,6 +1430,8 @@
         setIsLocked(t.isLocked);
         setAdminPin(t.adminPin);
         setFinishedAt(t.finishedAt);
+        setPlayStartedAt(t.playStartedAt);
+        setPlayEndedAt(t.playEndedAt);
         setEditingPlayerId(null);
         setPendingCustomPlayerName(null);
         setShowNewTournamentWarning(false);
@@ -1604,6 +1615,7 @@
         }
         setPlayers(result.players);
         setMatches(result.matches);
+        setPlayStartedAt(markPlayStarted(playStartedAt, new Date()));
       };
 
       const handleDeleteMatch = (matchId) => {
@@ -1697,6 +1709,7 @@
         }
         if (result.finished) {
           setShowWinnerModal(true);
+          setPlayEndedAt(new Date().toISOString());
         }
         setBracketData(result.bracket);
       };
@@ -2674,6 +2687,16 @@
                     <p className="text-xs text-gray-400">Final Playoff Standings</p>
                   </div>
 
+                  {playStartedAt && playEndedAt && (
+                    <div data-testid="play-duration" className="text-xs text-gray-300 bg-cfc-dark/80 p-3 rounded-lg border border-cfc-border space-y-1">
+                      <div>Start: {formatStartedAt(playStartedAt)}</div>
+                      <div>End: {formatStartedAt(playEndedAt)}</div>
+                      {playDurationMinutes(playStartedAt, playEndedAt) !== null && (
+                        <div className="font-bold text-white">Duration: {formatDuration(playDurationMinutes(playStartedAt, playEndedAt))}</div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="space-y-2 text-left bg-cfc-dark/80 p-4 rounded-lg border border-cfc-border">
                     {bracketStandings.filter(item => item.place <= 3).map((item) => {
                       const medal = placeMedal(item.place);
@@ -2937,6 +2960,9 @@
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
                         />
                         <p data-testid="tournament-started" className="text-[11px] text-gray-500 mt-1">Started {formatStartedAt(startedAt)}</p>
+                        {playEndedAt && (
+                          <p data-testid="tournament-ended" className="text-[11px] text-gray-500">Ended {formatStartedAt(playEndedAt)}</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 block mb-1">Tables Available</label>
