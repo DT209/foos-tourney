@@ -153,7 +153,7 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=ec9364a775"></script>
+  <script src="tournament-logic.js?v=87e9717a05"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
   <script src="firebase-remote.js?v=a0ed6d62d2"></script>
@@ -185,7 +185,7 @@
       loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, canFinishTournament, finishTournament, tournamentEditLock, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, displayedTournament, displayResultsStep, canFinishTournament, finishTournament, tournamentEditLock, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -627,7 +627,62 @@
 
     // qrAvailable: whether the shown tournament has a viewer link; without one
     // there is no QR code button.
-    function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, onQr, qrAvailable, layout, onLayoutChange }) {
+    // The "Tournament Complete!" pop-up: the top three places, then what the
+    // caller adds (the control desk's finish question or exports, or Display
+    // Mode's Close button).
+    function ResultsDialog({ results, children }) {
+      return (
+        <div data-testid="results-dialog" className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-cfc-panel border-2 border-yellow-500/60 p-6 rounded-xl max-w-md w-full space-y-5 shadow-2xl text-center relative overflow-hidden">
+            <div className="space-y-1">
+              <span className="text-4xl block animate-bounce">🏆</span>
+              <h3 className="text-2xl font-black text-white uppercase tracking-wider">
+                Tournament Complete!
+              </h3>
+              <p className="text-xs text-gray-400">Final Playoff Standings</p>
+            </div>
+
+            <div className="space-y-2 text-left bg-cfc-dark/80 p-4 rounded-lg border border-cfc-border">
+              {results.map((item) => {
+                const medal = placeMedal(item.place);
+                const trophy = medal && <span className="text-xl">{medal}</span>;
+
+                return (
+                  <div key={item.place} data-testid="results-row" className="flex items-center justify-between p-2 border-b border-cfc-border/60 last:border-b-0">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 flex justify-center">{trophy || <span className="text-xs font-bold text-gray-400">#{item.place}</span>}</div>
+                      <span className="font-bold text-sm text-white">{item.team ? item.team.name : 'Unknown'}</span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      {placeLabel(item.place)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // Display Mode's read-only results: the places and a Close button.
+    function DisplayResults({ results, onClose }) {
+      return (
+        <ResultsDialog results={results}>
+          <button
+            data-testid="close-results"
+            onClick={onClose}
+            className="w-full bg-cfc-red hover:bg-cfc-redHover text-white font-bold py-2.5 rounded text-xs uppercase tracking-wider transition"
+          >
+            Close Results
+          </button>
+        </ResultsDialog>
+      );
+    }
+
+    function DisplayBoard({ board, title, started, onExit, onOpenWindow, onSwitch, onQr, qrAvailable, layout, onLayoutChange, onViewResults }) {
       const gridRef = useRef(null);
       const sideRef = useRef(null);
       const directions = splitDirections(layout.arrangement);
@@ -648,6 +703,16 @@
                   onClick={onQr}
                 >
                   <QrIcon />
+                </button>
+              )}
+              {board.results && (
+                <button
+                  data-testid="view-results-button"
+                  className="db-btn"
+                  title="Shows the final bracket places."
+                  onClick={onViewResults}
+                >
+                  🏆 View Results
                 </button>
               )}
               <button
@@ -1123,6 +1188,17 @@
       const latestState = useRef(null);
       latestState.current = currentTournamentState();
       const watchedSig = watchedSections(boardForTournament(latestState.current));
+      // Display Mode's results pop-up: opens by itself when the shown
+      // tournament's bracket completes (or its champion changes after a fix),
+      // and from View Results.
+      const [displayResultsOpen, setDisplayResultsOpen] = useState(false);
+      const displayResultsSeen = useRef(null);
+      const shownTournament = displayedTournament(displayMode, displaySource, remoteView, latestState.current);
+      useEffect(() => {
+        const step = displayResultsStep(displayResultsSeen.current, shownTournament);
+        displayResultsSeen.current = step.seen;
+        if (step.show !== null) setDisplayResultsOpen(step.show);
+      });
       const isPublishingHere = remote !== null && publishing !== null && publishing.tournamentId === tournamentId &&
         !readOnlyView && !isDisplayWindow;
 
@@ -1720,6 +1796,8 @@
       if (displayMode) {
         const exitDisplay = () => (isDisplayWindow ? window.location.assign(controlDeskUrl(window.location.href)) : setDisplayMode(false));
         const onSwitch = remote ? switchDisplaySource : null;
+        const viewDisplayResults = () => setDisplayResultsOpen(true);
+        const closeDisplayResults = () => setDisplayResultsOpen(false);
         // Shown only while the tournament still has a viewer link.
         const qrUrl = qrChoice && choiceUrl(qrChoice);
         const qrDialog = qrUrl && (
@@ -1754,10 +1832,12 @@
           }
           const followed = remoteView.tournament;
           const shown = { source: 'remote', id: displaySource.id, name: followed.tournamentName, startedAt: followed.startedAt };
+          const followedBoard = boardForTournament(followed);
           return (
             <React.Fragment>
               <DisplayBoard
-                board={boardForTournament(followed)}
+                board={followedBoard}
+                onViewResults={viewDisplayResults}
                 title={followed.tournamentName}
                 started={formatStartedAt(followed.startedAt)}
                 onExit={exitDisplay}
@@ -1768,15 +1848,20 @@
                 layout={displayLayout}
                 onLayoutChange={setDisplayLayout}
               />
+              {displayResultsOpen && followedBoard.results && (
+                <DisplayResults results={followedBoard.results} onClose={closeDisplayResults} />
+              )}
               {qrDialog}
             </React.Fragment>
           );
         }
         const shown = { source: 'local', id: tournamentId, name: tournamentName, startedAt };
+        const localBoard = boardForTournament(latestState.current);
         return (
           <React.Fragment>
             <DisplayBoard
-              board={boardForTournament(latestState.current)}
+              board={localBoard}
+              onViewResults={viewDisplayResults}
               title={tournamentName}
               started={formatStartedAt(startedAt)}
               onExit={exitDisplay}
@@ -1787,6 +1872,9 @@
               layout={displayLayout}
               onLayoutChange={setDisplayLayout}
             />
+            {displayResultsOpen && localBoard.results && (
+              <DisplayResults results={localBoard.results} onClose={closeDisplayResults} />
+            )}
             {qrDialog}
           </React.Fragment>
         );
@@ -2664,35 +2752,7 @@
             )}
 
             {showWinnerModal && (
-              <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
-                <div className="bg-cfc-panel border-2 border-yellow-500/60 p-6 rounded-xl max-w-md w-full space-y-5 shadow-2xl text-center relative overflow-hidden">
-                  <div className="space-y-1">
-                    <span className="text-4xl block animate-bounce">🏆</span>
-                    <h3 className="text-2xl font-black text-white uppercase tracking-wider">
-                      Tournament Complete!
-                    </h3>
-                    <p className="text-xs text-gray-400">Final Playoff Standings</p>
-                  </div>
-
-                  <div className="space-y-2 text-left bg-cfc-dark/80 p-4 rounded-lg border border-cfc-border">
-                    {bracketStandings.filter(item => item.place <= 3).map((item) => {
-                      const medal = placeMedal(item.place);
-                      const trophy = medal && <span className="text-xl">{medal}</span>;
-
-                      return (
-                        <div key={item.place} className="flex items-center justify-between p-2 border-b border-cfc-border/60 last:border-b-0">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 flex justify-center">{trophy || <span className="text-xs font-bold text-gray-400">#{item.place}</span>}</div>
-                            <span className="font-bold text-sm text-white">{item.team ? item.team.name : 'Unknown'}</span>
-                          </div>
-                          <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                            {placeLabel(item.place)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-
+              <ResultsDialog results={bracketStandings.filter(item => item.place <= 3)}>
                   {askToFinish ? (
                     <div data-testid="finish-question" className="space-y-3 text-left">
                       <p className="text-xs text-gray-300">
@@ -2738,8 +2798,7 @@
                       </button>
                     </React.Fragment>
                   )}
-                </div>
-              </div>
+              </ResultsDialog>
             )}
 
             {showBracketModal && (

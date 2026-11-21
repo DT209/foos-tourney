@@ -320,6 +320,13 @@ flowchart TD
 - **Leaderboard:** the Monster standings.
 - **Match history:** most recent first.
 
+**Results:** when the bracket on the board is completed (or a fix changes its champion), the same
+**Tournament Complete!** pop-up as on the control desk opens by itself, showing 1st to 3rd place. On the
+board it is view-only: just **Close Results**, with no finish question or exports. Opening or switching to
+a tournament that is already complete doesn't pop it up. Once the bracket is complete, **🏆 View Results**
+in the board's header opens it again. This works for this device's tournament, a second-screen window and
+a followed published tournament.
+
 Panels scroll by themselves when their content doesn't fit, pausing at the top and bottom. Devices set
 to reduce motion scroll manually instead. All sizes are relative to the screen. It works while locked
 and in the read-only view.
