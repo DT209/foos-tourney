@@ -2884,6 +2884,37 @@ globalThis.TournamentLogic = (() => {
     }
   }
 
+  // The top three places once the bracket is complete, or null before then.
+  function bracketResults(bracketData) {
+    if (!bracketData || !bracketData.isCompleted) return null;
+    const top = calculateBracketStandings(bracketData).filter(item => item.place <= 3);
+    return top.length > 0 ? top : null;
+  }
+
+  // The tournament Display Mode is showing: this device's (`local`), the
+  // followed published one once it has loaded, or null (the picker, a
+  // message, or not in Display Mode).
+  function displayedTournament(displayMode, displaySource, remoteView, local) {
+    if (!displayMode || displaySource === null) return null;
+    if (displaySource.source === 'remote') return remoteView.tournament || null;
+    return local;
+  }
+
+  // Display Mode's results pop-up follows the control desk's rule: it opens by
+  // itself when the shown tournament's bracket becomes complete or its
+  // champion changes after a fix, never just because a complete tournament
+  // was opened. `seen` is what the last call returned (null at first).
+  // Returns { seen, show }: show is true to open, false to close (another
+  // tournament, or no results any more) and null to leave it as it is.
+  function displayResultsStep(seen, tournament) {
+    if (tournament === null) return { seen: null, show: seen === null ? null : false };
+    const results = bracketResults(tournament.bracketData);
+    const next = { id: tournament.tournamentId, champion: results ? results[0].team.id : null };
+    if (seen === null || seen.id !== next.id) return { seen: next, show: seen === null ? null : false };
+    if (next.champion === null) return { seen: next, show: seen.champion === null ? null : false };
+    return { seen: next, show: next.champion === seen.champion ? null : true };
+  }
+
   // The Display Mode board for any tournament state (the open one, or one
   // read from Firebase).
   function boardForTournament(state) {
@@ -2895,7 +2926,8 @@ globalThis.TournamentLogic = (() => {
         players: state.players,
         completedMatches: getCompletedMatchesList(state.matches, state.bracketData, state.tournamentId)
       }),
-      finished: state.finishedAt !== null
+      finished: state.finishedAt !== null,
+      results: bracketResults(state.bracketData)
     };
   }
 
@@ -3257,6 +3289,9 @@ globalThis.TournamentLogic = (() => {
     choiceViewerUrl,
     isLocalOnlyUrl,
     boardForTournament,
+    bracketResults,
+    displayedTournament,
+    displayResultsStep,
     canFinishTournament,
     finishTournament,
     tournamentEditLock,
