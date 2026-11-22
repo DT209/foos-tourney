@@ -112,7 +112,9 @@ flowchart TD
 ## 4. Matchmaking: `drawFairMatch`
 
 `drawMonsterMatch` finds a table with `findFreeTable`, calls `drawFairMatch`, then builds the match
-with `createGameSlots`.
+with `createGameSlots`, storing `skippedIds` on it as `skipped` and rebuilding the counters with
+`recomputeDrawCounters`. `deleteMatch`, `substitutePlayer` and `editMonsterMatch` rebuild them the same
+way.
 
 ```mermaid
 flowchart TD
@@ -129,9 +131,9 @@ flowchart TD
     FM -- "2v2" --> Q2["p2: teammate penalty vs p1"]
     Q2 --> Q3["p3: opponent penalty vs p1 and p2"]
     Q3 --> Q4["p4: teammate penalty vs p3 plus opponent penalty vs p1 and p2"]
-    Q1 --> UP["Update eligibleDrawsMissed"]
+    Q1 --> UP["skippedIds: available players not drawn"]
     Q4 --> UP
-    UP --> OUT["{ team1, team2, updatedPlayers }"]
+    UP --> OUT["{ team1, team2, skippedIds }"]
 ```
 
 `pickLowestPenalty` scores each candidate:
@@ -145,8 +147,8 @@ flowchart LR
     SC --> LW["Lowest total wins"]
 ```
 
-Weights: `W_TEAMMATE` 300, `W_OPPONENT` 100. Drawn players reset `eligibleDrawsMissed` to 0. Active,
-idle, undrawn players gain 1.
+Weights: `W_TEAMMATE` 300, `W_OPPONENT` 100. `eligibleDrawsMissed` is rebuilt from the match list: a
+player on a match resets to 0, and each match whose `skipped` lists them adds 1.
 
 ## 5. Bracket lifecycle
 
@@ -291,7 +293,12 @@ Display Mode first asks `initialDisplaySource(remoteId, remoteEnabled)`: a `?rem
 tournament, publishing switched on shows `DisplayPicker` (choices from `displayChoices`, this device first; one
 click on a row shows it, and its Show button has focus so Enter or a TV remote's OK picks it),
 and otherwise it goes straight to this device. **Switch tournament** sets the source back to `null`.
-Every board is `boardForTournament(state)`, whether the state is local or read from Firebase.
+Every board is `boardForTournament(state)`, whether the state is local or read from Firebase. Its `results`
+(`bracketResults`: top 3 once the bracket is complete, else null) drives **🏆 View Results** and the
+read-only `DisplayResults` pop-up, which shares `ResultsDialog` with the control desk's Tournament Complete!
+dialog. After every render the page feeds the shown tournament (`displayedTournament`) to
+`displayResultsStep`, which opens the pop-up when that tournament's champion goes from none to one or
+changes, and closes it when the board moves to another tournament.
 
 ## 9. Publishing (Firebase)
 
@@ -328,11 +335,11 @@ replace the adapter with `test-e2e/fake-remote.js`, which records every call.
 | Tournaments and persistence      | `createTournamentId`, `randomUuid`, `newTournamentState`, `nextTournamentState`, `restoreTournamentState`, `saveTournament`, `loadCurrentTournament`, `listTournaments`, `recentTournamentPlayers`, `withRecentPlayers`, `deleteTournament`                                                                                                                                                                                                                                                                                      |
 | Play time                        | `markPlayStarted`, `markPlayEnded`, `playDurationMinutes`, `playDurationText`, `formatDuration`                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Export and import                | `serializeTournamentExport`, `parseTournamentExport`, `storeImportedTournament`, `getBrowserStorage`                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`, `splitFromPointer`, `nudgeSplit`, `nextArrangement`, `splitDirections`, `loadDisplayLayout`, `saveDisplayLayout`, `layoutParam`, `layoutFromSearch`, `isDisplayLayoutKey`, `isTournamentStorageKey`                                                                                                                                                                                         |
+| Display mode                     | `buildDisplayBoard`, `initialAutoScroll`, `nextAutoScroll`, `isDisplayModeUrl`, `displayModeUrl`, `controlDeskUrl`, `tournamentCsv`, `splitFromPointer`, `nudgeSplit`, `nextArrangement`, `splitDirections`, `loadDisplayLayout`, `saveDisplayLayout`, `layoutParam`, `layoutFromSearch`, `isDisplayLayoutKey`, `isTournamentStorageKey`, `bracketResults`, `displayedTournament`, `displayResultsStep`                                                                                                                          |
 | Publishing (Firebase)            | `watchedSections`, `publishThrottle`, `publishedDocument`, `publishDecision`, `nextFreeSlot`, `claimWrites`, `replaceWrites`, `publishWrites`, `takeOverWrites`, `displayChoices`, `initialDisplaySource`, `generatePublisherCode`, `parsePublisherCodeFile`, `copyToClipboard`, `boardForTournament`, `canFinishTournament`, `finishTournament`, `tournamentEditLock`, `publishStartOutcome`, `takeOverOutcome`, `parsePublishedTournament`, `publishedDownload`, `qrModules`, `qrSvgPath`, `choiceViewerUrl`, `isLocalOnlyUrl` |
 | Club leaderboard                 | `fetchLeaderboardPlayers`, `getLeaderboardInfo`, `FALLBACK_LEADERBOARD_PLAYERS`                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Roster                           | `checkNewPlayerName`, `addPlayer`, `addPlayersByName`, `computeStandings`, `getLeaderboardPickerView`, `getPlayerSuggestions`                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Fair matchmaking                 | `drawFairMatch`, `pickLowestPenalty`, `buildHistoryMatrices`, `recomputeDrawCounters`                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Monster stage matches            | `drawMonsterMatch`, `findFreeTable`, `completeMonsterMatch`, `getMatchWinner`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Bracket generation               | `createBracket`, `manualTeamsError`, `buildBracketTeams`, `generateBracketStructure`, `buildManualTeams`, `clearMatchResults`                                                                                                                                                                                                                                                                                                                                                                                                    |
 | Bracket play                     | `confirmBracketMatch`, `advanceWinnersBracket`, `advanceLosersBracket`, `isBracketFinished`, `calculateBracketStandings`, `assignBracketTables`, `checkTableCountChange`, `releaseBracketTables`                                                                                                                                                                                                                                                                                                                                 |

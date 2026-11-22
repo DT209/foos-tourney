@@ -64,7 +64,28 @@ describe('drawMonsterMatch', () => {
     );
     assert.equal(m.games.length, 3);
     assert.equal(m.team1.length + m.team2.length, 4);
+    assert.deepEqual(m.skipped, []);
     assert.equal(result.players.length, 4);
+  });
+
+  it('a drawn player resets to 0 and an eligible player left out gets +1', () => {
+    const result = L.drawMonsterMatch({ ...base, players: players(6) });
+    const m = result.matches[0];
+    const drawn = new Set([...m.team1, ...m.team2].map(p => p.id));
+    result.players.forEach(p => assert.equal(p.eligibleDrawsMissed, drawn.has(p.id) ? 0 : 1));
+    assert.equal(m.skipped.length, 2);
+  });
+
+  it('deleting a mistaken draw puts every counter back (issue 13)', () => {
+    const first = L.drawMonsterMatch({ ...base, players: players(10), tableCount: 2 });
+    const second = L.drawMonsterMatch({ ...base, ...first, tableCount: 2, id: 100 });
+    assert.notDeepEqual(
+      second.players.map(p => p.eligibleDrawsMissed),
+      first.players.map(p => p.eligibleDrawsMissed)
+    );
+    const deleted = L.deleteMatch(second.players, second.matches, 100);
+    assert.deepEqual(deleted.matches, first.matches);
+    assert.deepEqual(deleted.players, first.players);
   });
 
   it('defaults to Math.random', () => {
@@ -87,7 +108,30 @@ describe('monster match edits', () => {
   const matches = [m, other];
 
   it('deletes by id', () => {
-    assert.deepEqual(L.deleteMatch(matches, 1), [other]);
+    const live = { id: 3, team1: [player(1)], team2: [player(2)], skipped: [3] };
+    const roster = [player(1, 'A', { eligibleDrawsMissed: 4 }), player(2), player(3, 'C', { eligibleDrawsMissed: 1 })];
+    const result = L.deleteMatch(roster, [live], 3);
+    assert.deepEqual(result.matches, []);
+    assert.deepEqual(
+      result.players.map(p => p.eligibleDrawsMissed),
+      [0, 0, 0]
+    );
+  });
+
+  it('rebuilds draw counters from the match history in draw order', () => {
+    const [a, b, c, d, e] = players(5);
+    const history = [
+      { team1: [a], team2: [b], skipped: [3, 4, 99] },
+      { team1: [c], team2: [a], skipped: [2, 4] },
+      { team1: [a], team2: [c] }
+    ];
+    const stale = [a, b, c, d, { ...e, eligibleDrawsMissed: 7 }];
+    const rebuilt = L.recomputeDrawCounters(stale, history);
+    assert.deepEqual(
+      rebuilt.map(p => p.eligibleDrawsMissed),
+      [0, 1, 0, 2, 0]
+    );
+    assert.equal(rebuilt[1].name, 'P2');
   });
 
   it('updates one game score immutably, sanitizing input', () => {

@@ -145,6 +145,18 @@ describe('editing a Monster match', () => {
     assert.deepEqual([pa.losses, pe.losses, pe.gf, pe.ga], [1, 1, 10, 3]);
   });
 
+  it('a corrected line-up resets the draw counter of the player who really played', () => {
+    const drawn = { ...done, skipped: [5] };
+    const draft = setPlayer(L.editDraftFor(ref, [drawn], null), 'team1Ids', 1, '5');
+    const result = L.editMonsterMatch(roster, [drawn], { ...draft, games: [g(5, 4), g(5, 4), g('', '')] }, NOW);
+    assert.deepEqual(
+      result.players.map(p => p.eligibleDrawsMissed),
+      [0, 0, 0, 0, 0]
+    );
+    const unchanged = L.editMonsterMatch(roster, [drawn], L.editDraftFor(ref, [drawn], null), NOW);
+    assert.equal(unchanged.players[4].eligibleDrawsMissed, 1);
+  });
+
   it('keeps a player who has since left the roster', () => {
     const draft = L.editDraftFor(ref, [done], null);
     const withoutB = roster.filter(p => p.id !== 2);
@@ -399,6 +411,16 @@ describe('substitutePlayer', () => {
       "P2 is paused and won't be drawn again."
     ]);
     assert.equal(result.bracketData, null);
+  });
+
+  it('the replacement gets the draw reset and the leaving player gets their count back', () => {
+    const earlier = { id: 0, status: 'DONE', winner: 1, team1: [e], team2: [f], games: [], skipped: [1, 2, 3, 4] };
+    const drawn = { ...live, skipped: [5, 6] };
+    const result = L.substitutePlayer(state({ matches: [earlier, drawn] }), 2, 5);
+    assert.deepEqual(
+      result.players.map(p => p.eligibleDrawsMissed),
+      [0, 1, 0, 0, 0, 1]
+    );
   });
 
   it('a player in no live match or bracket is just paused', () => {
