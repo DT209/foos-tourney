@@ -114,7 +114,11 @@ globalThis.TournamentLogic = (() => {
       adminPin: null,
       // Set when the organizer finishes the tournament; from then on it is
       // read-only on this page (see tournamentEditLock).
-      finishedAt: null
+      finishedAt: null,
+      // Play time: set when Draw New Match is first used, and when the final
+      // results are shown. Null until then.
+      playStartedAt: null,
+      playEndedAt: null
     };
   }
 
@@ -218,7 +222,9 @@ globalThis.TournamentLogic = (() => {
     seedingStrategy: isOneOf(['ranking', 'random', 'elo']),
     customTeams: v => isArrayOf(v, isCustomTeam),
     adminPin: v => v === null || typeof v === 'string',
-    finishedAt: v => v === null || (typeof v === 'string' && !isNaN(Date.parse(v)))
+    finishedAt: v => v === null || (typeof v === 'string' && !isNaN(Date.parse(v))),
+    playStartedAt: v => v === null || (typeof v === 'string' && !isNaN(Date.parse(v))),
+    playEndedAt: v => v === null || (typeof v === 'string' && !isNaN(Date.parse(v)))
   };
 
   function isValidField(key, value, fallback) {
@@ -2932,6 +2938,44 @@ globalThis.TournamentLogic = (() => {
   }
 
   // ==========================================
+  // PLAY DURATION
+  // ==========================================
+  // The tournament starts at the first Draw New Match and ends when the final
+  // results are shown.
+
+  // Keeps the first start time; sets it on the first draw.
+  function markPlayStarted(playStartedAt, now) {
+    return playStartedAt === null ? now.toISOString() : playStartedAt;
+  }
+
+  // Keeps the first end time, so correcting a result after the final doesn't
+  // stretch the duration; sets it when the final results first show.
+  function markPlayEnded(playEndedAt, now) {
+    return playEndedAt === null ? now.toISOString() : playEndedAt;
+  }
+
+  // Whole minutes between start and end, or null while either is missing or
+  // the end is before the start.
+  function playDurationMinutes(playStartedAt, playEndedAt) {
+    if (playStartedAt === null || playEndedAt === null) return null;
+    const ms = Date.parse(playEndedAt) - Date.parse(playStartedAt);
+    return ms < 0 ? null : Math.round(ms / 60000);
+  }
+
+  // "45 min" or "2 h 05 min".
+  function formatDuration(minutes) {
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)} h ${String(minutes % 60).padStart(2, '0')} min`;
+  }
+
+  // "1 h 35 min" for the results dialog, or null while either time is missing
+  // or the end is before the start.
+  function playDurationText(playStartedAt, playEndedAt) {
+    const minutes = playDurationMinutes(playStartedAt, playEndedAt);
+    return minutes === null ? null : formatDuration(minutes);
+  }
+
+  // ==========================================
   // FINISHING A TOURNAMENT
   // ==========================================
   // Once the bracket is complete the organizer can finish the tournament.
@@ -3294,6 +3338,11 @@ globalThis.TournamentLogic = (() => {
     displayResultsStep,
     canFinishTournament,
     finishTournament,
+    markPlayStarted,
+    markPlayEnded,
+    playDurationText,
+    playDurationMinutes,
+    formatDuration,
     tournamentEditLock,
     publishStartOutcome,
     takeOverOutcome,

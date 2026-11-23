@@ -98,3 +98,76 @@ describe('the Display Mode board', () => {
     );
   });
 });
+
+describe('play duration', () => {
+  const START = '2026-10-30T18:00:00.000Z';
+
+  it('starts unset', () => {
+    const state = L.newTournamentState(ID, NOW);
+    assert.equal(state.playStartedAt, null);
+    assert.equal(state.playEndedAt, null);
+  });
+
+  it('markPlayStarted sets the first draw time and keeps it after that', () => {
+    assert.equal(L.markPlayStarted(null, NOW), NOW.toISOString());
+    assert.equal(L.markPlayStarted(START, NOW), START);
+  });
+
+  it('markPlayEnded keeps the first end time', () => {
+    assert.equal(L.markPlayEnded(null, NOW), NOW.toISOString());
+    assert.equal(L.markPlayEnded(START, NOW), START);
+  });
+
+  it('playDurationText is null without a valid span, else formatted', () => {
+    assert.equal(L.playDurationText(null, START), null);
+    assert.equal(L.playDurationText(START, '2026-10-30T17:00:00.000Z'), null);
+    assert.equal(L.playDurationText(START, '2026-10-30T19:35:00.000Z'), '1 h 35 min');
+  });
+
+  it('playDurationMinutes needs both times and a sane order', () => {
+    assert.equal(L.playDurationMinutes(null, null), null);
+    assert.equal(L.playDurationMinutes(START, null), null);
+    assert.equal(L.playDurationMinutes(null, START), null);
+    assert.equal(L.playDurationMinutes(START, '2026-10-30T17:00:00.000Z'), null, 'end before start');
+    assert.equal(L.playDurationMinutes(START, '2026-10-30T18:45:20.000Z'), 45);
+    assert.equal(L.playDurationMinutes(START, START), 0);
+  });
+
+  it('formatDuration shows minutes, or hours and padded minutes', () => {
+    assert.equal(L.formatDuration(45), '45 min');
+    assert.equal(L.formatDuration(125), '2 h 05 min');
+    assert.equal(L.formatDuration(60), '1 h 00 min');
+  });
+
+  it('is saved, restored, exported and re-imported', () => {
+    const end = '2026-10-30T20:10:00.000Z';
+    const state = completedState({ playStartedAt: START, playEndedAt: end });
+    const restored = L.restoreTournamentState(state, opts);
+    assert.equal(restored.playStartedAt, START);
+    assert.equal(restored.playEndedAt, end);
+    const text = L.serializeTournamentExport(state, NOW);
+    const file = JSON.parse(text).tournament;
+    assert.equal(file.playStartedAt, START);
+    assert.equal(file.playEndedAt, end);
+    const parsed = L.parseTournamentExport(text).tournament;
+    assert.equal(parsed.playStartedAt, START);
+    assert.equal(parsed.playEndedAt, end);
+  });
+
+  it('falls back to null for invalid values and for files from before it existed', () => {
+    const bad = L.restoreTournamentState({ ...completedState(), playStartedAt: 'soon', playEndedAt: 7 }, opts);
+    assert.equal(bad.playStartedAt, null);
+    assert.equal(bad.playEndedAt, null);
+    const older = completedState();
+    delete older.playStartedAt;
+    delete older.playEndedAt;
+    const restored = L.restoreTournamentState(older, opts);
+    assert.equal(restored.playStartedAt, null);
+    assert.equal(restored.playEndedAt, null);
+    const text = L.serializeTournamentExport(completedState(), NOW);
+    assert.match(
+      L.parseTournamentExport(text.replace('"playEndedAt": null', '"playEndedAt": "nope"')).error,
+      /invalid tournament data \(playEndedAt\)/
+    );
+  });
+});

@@ -153,10 +153,10 @@
   </script>
 
   <!-- Tournament logic (plain JS, no build step) -->
-  <script src="tournament-logic.js?v=70c2541f54"></script>
+  <script src="tournament-logic.js?v=44acdb8ec5"></script>
   <!-- Publishing to Firebase: off while firebase-config.js holds null -->
   <script src="firebase-config.js?v=ece2a14e8e"></script>
-  <script src="firebase-remote.js?v=a0ed6d62d2"></script>
+  <script src="firebase-remote.js?v=954c23a236"></script>
 
   <script type="text/babel">
     const { useState, useEffect, useRef, useMemo } = React;
@@ -185,7 +185,7 @@
       loadDisplayLayout, saveDisplayLayout, layoutFromSearch, isDisplayLayoutKey, isTournamentStorageKey,
       watchedSections, watchedChanged, publishThrottle, generatePublisherCode, formatPublisherCode, normalizePublisherCode,
       publisherCodeFileName, publisherCodeFile, parsePublisherCodeFile, loadPublishing, savePublishing,
-      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, displayedTournament, displayResultsStep, canFinishTournament, finishTournament, tournamentEditLock, publishStartOutcome, takeOverOutcome,
+      copyToClipboard, remoteTournamentUrl, remoteIdFromSearch, displayChoices, boardForTournament, displayedTournament, displayResultsStep, canFinishTournament, finishTournament, markPlayStarted, markPlayEnded, playDurationText, tournamentEditLock, publishStartOutcome, takeOverOutcome,
       parsePublishedTournament, publishedDownload, qrModules, qrSvgPath, qrViewBoxSize, choiceViewerUrl, isLocalOnlyUrl, publishResultStatus, shouldRetryPublishing, initialDisplaySource, savedTournamentName
     } = window.TournamentLogic;
 
@@ -630,7 +630,7 @@
     // The "Tournament Complete!" pop-up: the top three places, then what the
     // caller adds (the control desk's finish question or exports, or Display
     // Mode's Close button).
-    function ResultsDialog({ results, children }) {
+    function ResultsDialog({ results, playStartedAt = null, playEndedAt = null, children }) {
       return (
         <div data-testid="results-dialog" className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-cfc-panel border-2 border-yellow-500/60 p-6 rounded-xl max-w-md w-full space-y-5 shadow-2xl text-center relative overflow-hidden">
@@ -641,6 +641,16 @@
               </h3>
               <p className="text-xs text-gray-400">Final Playoff Standings</p>
             </div>
+
+            {playStartedAt && playEndedAt && (
+              <div data-testid="play-duration" className="text-xs text-gray-300 bg-cfc-dark/80 p-3 rounded-lg border border-cfc-border space-y-1">
+                <div>Start: {formatStartedAt(playStartedAt)}</div>
+                <div>End: {formatStartedAt(playEndedAt)}</div>
+                {playDurationText(playStartedAt, playEndedAt) !== null && (
+                  <div className="font-bold text-white">Duration: {playDurationText(playStartedAt, playEndedAt)}</div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-2 text-left bg-cfc-dark/80 p-4 rounded-lg border border-cfc-border">
               {results.map((item) => {
@@ -1030,6 +1040,9 @@
       // When the tournament was finished (null while it runs). A finished
       // tournament is read-only here for good; see tournamentEditLock.
       const [finishedAt, setFinishedAt] = useState(restored.finishedAt);
+      // Play time: first Draw New Match to the final results.
+      const [playStartedAt, setPlayStartedAt] = useState(restored.playStartedAt);
+      const [playEndedAt, setPlayEndedAt] = useState(restored.playEndedAt);
       const [isLocked, setIsLocked] = useState(restored.isLocked);
       const [pinInput, setPinInput] = useState('');
       const [showPinModal, setShowPinModal] = useState(false);
@@ -1112,7 +1125,8 @@
       const currentTournamentState = () => ({
         tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
         players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt
+        teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt,
+        playStartedAt, playEndedAt
       });
 
       // --- AUTO-SAVE (paused while viewing a file read-only) ---
@@ -1121,7 +1135,7 @@
         setIsSaved(saveTournament(storage, currentTournamentState()));
       }, [storage, readOnlyView, isDisplayWindow, tournamentId, startedAt, tournamentName, tableCount, format, maxGames, activeTab,
           players, matches, bracketData, bracketTeamCount, bracketElimType, bracketMaxGames,
-          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt]);
+          teamFormationStrategy, seedingStrategy, customTeams, isLocked, adminPin, finishedAt, playStartedAt, playEndedAt]);
 
       // --- DISPLAY WINDOW: follow the control desk's saves in other tabs/windows ---
       useEffect(() => {
@@ -1369,7 +1383,10 @@
         setMatches(result.matches);
         setBracketData(result.bracketData);
         setEditDraft(null);
-        if (result.finished) setShowWinnerModal(true);
+        if (result.finished) {
+          setShowWinnerModal(true);
+          setPlayEndedAt(markPlayEnded(playEndedAt, new Date()));
+        }
       };
 
       const startSubstitution = () => requireAdmin('Substitute a Player', () => setSubDraft({ outId: '', inId: '' }));
@@ -1471,6 +1488,8 @@
         setMatches(cleared.matches);
         setBracketData(cleared.bracketData);
         setPlayers(cleared.players);
+        setPlayStartedAt(null);
+        setPlayEndedAt(null);
         setShowClearMatchesWarning(false);
       };
 
@@ -1497,6 +1516,8 @@
         setIsLocked(t.isLocked);
         setAdminPin(t.adminPin);
         setFinishedAt(t.finishedAt);
+        setPlayStartedAt(t.playStartedAt);
+        setPlayEndedAt(t.playEndedAt);
         setEditingPlayerId(null);
         setPendingCustomPlayerName(null);
         setShowNewTournamentWarning(false);
@@ -1680,6 +1701,7 @@
         }
         setPlayers(result.players);
         setMatches(result.matches);
+        setPlayStartedAt(markPlayStarted(playStartedAt, new Date()));
       };
 
       const handleDeleteMatch = (matchId) => {
@@ -1751,6 +1773,9 @@
         }
 
         setBracketData(result.bracket);
+        // A bracket-only event starts here; a redraw means the final is no longer shown.
+        setPlayStartedAt(markPlayStarted(playStartedAt, new Date()));
+        setPlayEndedAt(null);
         setShowBracketModal(false);
         setActiveTab('bracket');
       };
@@ -1775,6 +1800,7 @@
         }
         if (result.finished) {
           setShowWinnerModal(true);
+          setPlayEndedAt(markPlayEnded(playEndedAt, new Date()));
         }
         setBracketData(result.bracket);
       };
@@ -2754,7 +2780,7 @@
             )}
 
             {showWinnerModal && (
-              <ResultsDialog results={bracketStandings.filter(item => item.place <= 3)}>
+              <ResultsDialog results={bracketStandings.filter(item => item.place <= 3)} playStartedAt={playStartedAt} playEndedAt={playEndedAt}>
                   {askToFinish ? (
                     <div data-testid="finish-question" className="space-y-3 text-left">
                       <p className="text-xs text-gray-300">
@@ -2998,6 +3024,9 @@
                           className="w-full bg-cfc-dark border border-cfc-border rounded px-3 py-1.5 text-white focus:outline-none focus:border-cfc-red text-sm disabled:opacity-50"
                         />
                         <p data-testid="tournament-started" className="text-[11px] text-gray-500 mt-1">Started {formatStartedAt(startedAt)}</p>
+                        {playEndedAt && (
+                          <p data-testid="tournament-ended" className="text-[11px] text-gray-500">Ended {formatStartedAt(playEndedAt)}</p>
+                        )}
                       </div>
                       <div>
                         <label className="text-xs text-gray-400 block mb-1">Tables Available</label>

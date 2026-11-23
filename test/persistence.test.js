@@ -107,7 +107,9 @@ describe('newTournamentState / restoreTournamentState', () => {
       customTeams: [],
       isLocked: false,
       adminPin: null,
-      finishedAt: null
+      finishedAt: null,
+      playStartedAt: null,
+      playEndedAt: null
     });
   });
 
